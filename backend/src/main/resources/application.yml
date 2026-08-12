@@ -2,6 +2,16 @@ spring:
   application:
     name: service-atlas
 
+  main:
+    # Q-5: startup to an interactive UI in under 5 seconds. Most beans here are only needed once a
+    # scan or an export runs, so building them eagerly buys nothing and costs a second or two on
+    # every launch. The web layer, Flyway and the datasource are still initialised eagerly.
+    lazy-initialization: true
+    banner-mode: off
+
+  jmx:
+    enabled: false
+
   # ADR-002: embedded H2 in file mode by default — no database to install before the first scan.
   datasource:
     url: jdbc:h2:file:${service-atlas.data-dir}/atlas;AUTO_SERVER=TRUE;DB_CLOSE_DELAY=-1
@@ -11,6 +21,8 @@ spring:
 
   jpa:
     open-in-view: false
+    # Nothing needs the schema before the first request, and deferring it keeps startup short.
+    defer-datasource-initialization: false
     hibernate:
       # Flyway owns the schema; Hibernate may only check it (ADR-002).
       ddl-auto: validate

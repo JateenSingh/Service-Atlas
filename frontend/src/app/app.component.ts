@@ -64,9 +64,26 @@ export class AppComponent {
     effect(() => {
       const workspace = this.workspaceStore.selected();
       if (workspace && !this.workspaceStore.scanning()) {
-        void this.graphStore.load(workspace.id);
+        void this.graphStore.load(workspace.id).then(() => this.openCanvasOnFirstLoad());
       }
     });
+  }
+
+  /**
+   * On startup, land on the diagram when there already is one. Reloading the page while looking at
+   * a graph should not dump you back on the workspace picker.
+   *
+   * <p>Only ever fires once: after that the screen is the user's choice, and pulling them back to
+   * the canvas when they deliberately opened the workspace screen would be worse than the problem.
+   */
+  private hasAutoOpened = false;
+
+  private openCanvasOnFirstLoad(): void {
+    if (this.hasAutoOpened || this.graphStore.isEmpty()) {
+      return;
+    }
+    this.hasAutoOpened = true;
+    this.screenSignal.set('canvas');
   }
 
   showCanvas(): void {
@@ -74,6 +91,7 @@ export class AppComponent {
   }
 
   showWorkspaces(): void {
+    this.hasAutoOpened = true;
     this.screenSignal.set('workspaces');
   }
 

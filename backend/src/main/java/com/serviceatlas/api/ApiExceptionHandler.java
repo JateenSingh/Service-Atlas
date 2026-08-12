@@ -9,8 +9,15 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-/** Renders every error as RFC 7807 {@code application/problem+json} (§5). */
+/**
+ * Renders every error as RFC 7807 {@code application/problem+json} (§5).
+ *
+ * <p>Ordered ahead of Spring Boot's own {@code ProblemDetailsExceptionHandler}, which would
+ * otherwise answer validation failures with {@code type: about:blank}. Every error this API
+ * produces carries a stable {@code /problems/...} type instead, so clients can branch on it.
+ */
 @RestControllerAdvice
+@org.springframework.core.annotation.Order(org.springframework.core.Ordered.HIGHEST_PRECEDENCE)
 public class ApiExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
@@ -44,17 +51,15 @@ public class ApiExceptionHandler {
         return problem;
     }
 
-    /**
-     * Spring's own errors — unmapped path, unreadable body, wrong method — already carry a
-     * {@link ProblemDetail}. Pass it through rather than flattening it into a 500.
-     */
-    @ExceptionHandler(org.springframework.web.ErrorResponseException.class)
-    public ProblemDetail handleSpringError(org.springframework.web.ErrorResponseException exception) {
-        return exception.getBody();
-    }
-
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleUnexpected(Exception exception) {
+        // Spring's own errors — unmapped path, wrong method, unreadable body — already carry a
+        // ProblemDetail and their own status. They implement ErrorResponse without sharing a common
+        // base class, so the interface is the reliable thing to test for. Passing them through
+        // keeps a mistyped URL a 404 instead of flattening it into a 500.
+        if (exception instanceof org.springframework.web.ErrorResponse errorResponse) {
+            return errorResponse.getBody();
+        }
         log.error("Unhandled error", exception);
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
                 HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred. See the server log for details.");

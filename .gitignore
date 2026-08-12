@@ -30,3 +30,7 @@ npm-debug.log*
 .env
 .env.*
 !.env.example
+
+# Playwright / e2e run artifacts
+/e2e/.e2e-data/
+/frontend/coverage/

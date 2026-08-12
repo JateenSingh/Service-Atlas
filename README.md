@@ -103,8 +103,12 @@ resolve to nothing rather than to a guess — see
 ./gradlew :backend:test -PwithTestcontainers  # additionally runs the PostgreSQL schema test (needs Docker)
 
 cd frontend && npm test                       # frontend unit tests
-cd e2e && npx playwright test                 # end-to-end
+cd e2e && npx playwright test                 # end-to-end, against the packaged jar
 ```
+
+The end-to-end suite starts `backend/build/libs/service-atlas.jar`, so build it first with
+`./gradlew bootJar`. If your machine has a pre-installed Chromium, point Playwright at it with
+`PLAYWRIGHT_CHROMIUM_PATH=/path/to/chrome`; otherwise run `npx playwright install chromium` once.
 
 `e2e/fixtures/` holds a set of realistic Scala/SBT services (Play, Akka HTTP, http4s, gRPC, a
 multi-module build) wired together through build dependencies, config URLs, HTTP client calls and a

@@ -175,7 +175,47 @@ library-only module stays invisible, as part of its parent.
   stored OAuth tokens are encrypted; the export UI hides the API path entirely when it is not
   configured.
 
-## 6. Open items
+## 6. Testing
+
+| Layer | What it covers | How to run |
+|---|---|---|
+| Backend unit + integration | Parsers against fixture repos, graph correlation, overlays, bundles, exports, the HTTP contract | `./gradlew :backend:test -PskipFrontend` |
+| Coverage gate (Q-1) | ≥75% line coverage on `parser/`, `graph/`, `export/` | `./gradlew :backend:check -PskipFrontend` |
+| PostgreSQL schema | ADR-002's "identical schema" claim, on a real Postgres | `./gradlew :backend:test -PwithTestcontainers` (needs Docker) |
+| Frontend unit | Filter derivations and viewport arithmetic | `cd frontend && npm test` |
+| End-to-end (Q-2) | Create workspace → scan → explore → export `.lucid`, and a manual edit surviving a re-scan | `cd e2e && npx playwright test` |
+
+Two tests are worth calling out because they assert claims made elsewhere in this document:
+
+- `ReadOnlyScanTest` hashes the whole fixture tree before and after a scan and fails if a single
+  byte or timestamp moved (Q-4).
+- `LucidExportTest` is the golden-file test ADR-003 promises, pinning the emitted Lucid structure so
+  a future schema correction is one visible diff.
+
+The E2E suite runs the packaged jar — the same artifact a user runs — against a throwaway database.
+Where a pre-installed browser is available, point `PLAYWRIGHT_CHROMIUM_PATH` at it.
+
+## 7. Measured performance (Q-5)
+
+Measured on the build container, which is a CPU-limited shared VM — slower than the "typical dev
+machine" Q-5 refers to:
+
+| Budget | Target | Measured here |
+|---|---|---|
+| Startup to interactive UI | < 5 s | ~6.3 s |
+| Scan of 20 medium repositories | < 60 s | 27 repositories in **1.1 s** |
+
+The scan budget is met with a very large margin: the whole pipeline is I/O-bound reading small
+files, and the slowest single repository in that run took 72 ms.
+
+Startup is dominated by JVM and Spring context initialisation, not by anything Service Atlas does.
+`spring.main.lazy-initialization=true` is enabled for exactly this reason — most beans here (parsers,
+exporters, the Lucid client) are only needed once a scan or an export runs, so building them eagerly
+costs startup time and buys nothing; the first API call after boot measured 0.3 s. On typical
+developer hardware this lands inside the 5-second budget; on this container it does not, and that is
+recorded here rather than rounded away.
+
+## 8. Open items
 
 - **Lucid Standard Import schema re-verification.** FR-6.5 requires checking the schema against
   official Lucid documentation at build time. In the build environment `developer.lucid.co`,
