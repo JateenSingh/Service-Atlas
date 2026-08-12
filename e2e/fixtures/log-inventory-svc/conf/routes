@@ -1,0 +1,2 @@
+GET     /stock/:sku        controllers.StockController.get(sku: String)
+POST    /stock/reserve     controllers.StockController.reserve()

@@ -1,0 +1,3 @@
+GET     /quotes/:id       controllers.QuoteController.get(id: String)
+POST    /quotes           controllers.QuoteController.create()
+GET     /health           controllers.HealthController.check()
