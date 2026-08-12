@@ -125,11 +125,33 @@ public final class NameNormalizer {
         return value.strip();
     }
 
+    /** Host suffixes that mark a name as cluster-internal rather than a public domain. */
+    private static final Set<String> INTERNAL_HOST_SUFFIXES =
+            Set.of("local", "internal", "cluster", "svc", "lan", "intranet", "localdomain");
+
     /**
-     * Reduces a Kubernetes-style or fully-qualified host to its service label:
-     * {@code "log-quote-svc.logistics.svc.cluster.local"} → {@code "log-quote-svc"}.
+     * The name to <em>show</em> for a host.
+     *
+     * <p>For a cluster-internal name the first label is the service:
+     * {@code log-quote-svc.logistics.svc.cluster.local} → {@code log-quote-svc}. For a public
+     * domain the whole host is the identity — reducing {@code api.stripe.com} to {@code api} would
+     * turn every third-party API into an indistinguishable node called "api".
      */
     public static String serviceLabelOf(String host) {
+        String value = hostOf(host);
+        if (!value.contains(".")) {
+            return value;
+        }
+        String[] labels = value.split("\\.");
+        String last = labels[labels.length - 1].toLowerCase(Locale.ROOT);
+        return INTERNAL_HOST_SUFFIXES.contains(last) ? labels[0] : value;
+    }
+
+    /**
+     * The first label of a host, whatever kind it is. Used when <em>matching</em> against known
+     * services, where {@code log-quote-svc.logistics} should still find {@code log-quote-svc}.
+     */
+    public static String firstLabelOf(String host) {
         String value = hostOf(host);
         int dot = value.indexOf('.');
         return dot > 0 ? value.substring(0, dot) : value;

@@ -1,5 +1,6 @@
 package com.serviceatlas.parser.scala;
 
+import com.serviceatlas.graph.model.Endpoint;
 import com.serviceatlas.graph.model.GraphNode;
 import com.serviceatlas.graph.model.NodeType;
 import com.serviceatlas.parser.DependencySignal;
@@ -61,7 +62,7 @@ public class ScalaSbtLanguageParser implements LanguageParser {
 
         List<GraphNode> nodes = new ArrayList<>();
         nodes.add(serviceNode);
-        nodes.addAll(subModuleNodes(build, nodeKey, candidate));
+        nodes.addAll(subModuleNodes(build, nodeKey, candidate, files));
 
         List<DependencySignal> signals = new ArrayList<>();
         List<String> warnings = new ArrayList<>(build.warnings());
@@ -75,13 +76,15 @@ public class ScalaSbtLanguageParser implements LanguageParser {
             }
         }
 
-        return new ParsedRepo(nodes, signals, aliases(build, candidate), warnings);
+        return new ParsedRepo(nodes, signals, aliases(build, candidate, files), warnings);
     }
 
     private GraphNode buildServiceNode(RepoCandidate candidate, SbtBuild build, RepoFiles files,
                                        String nodeKey, String serviceName) {
         Set<String> frameworks = FrameworkDetector.detectAll(build.dependencies(), files);
+        List<Endpoint> endpoints = new PlayRoutesParser(files).parse();
         GraphNode.Builder node = GraphNode.builder(nodeKey, serviceName, NodeType.SERVICE)
+                .endpoints(endpoints)
                 .framework(FrameworkDetector.detect(build.dependencies(), files))
                 .scalaVersion(build.scalaVersion())
                 .sbtVersion(build.sbtVersion())
@@ -97,11 +100,20 @@ public class ScalaSbtLanguageParser implements LanguageParser {
         if (!build.modules().isEmpty()) {
             node.metadata("moduleCount", build.modules().size());
         }
+        if (!endpoints.isEmpty()) {
+            node.metadata("endpointCount", endpoints.size());
+        }
         return node.warnings(build.warnings()).build();
     }
 
+    /** FR-3.4 — a deployable module publishes its own routes, under its own directory. */
+    private List<Endpoint> moduleEndpoints(RepoFiles files, SbtModule module) {
+        return new PlayRoutesParser(files).parse(module.relativePath() + "/conf");
+    }
+
     /** FR-2.4 — independently deployable modules become nested SUB_MODULE nodes. */
-    private List<GraphNode> subModuleNodes(SbtBuild build, String parentKey, RepoCandidate candidate) {
+    private List<GraphNode> subModuleNodes(SbtBuild build, String parentKey, RepoCandidate candidate,
+                                           RepoFiles files) {
         List<GraphNode> nodes = new ArrayList<>();
         for (SbtModule module : build.modules()) {
             if (!module.deployable()) {
@@ -112,6 +124,7 @@ public class ScalaSbtLanguageParser implements LanguageParser {
                     .parentKey(parentKey)
                     .repoPath(candidate.relativePath() + "/" + module.relativePath())
                     .scalaVersion(build.scalaVersion())
+                    .endpoints(moduleEndpoints(files, module))
                     .metadata("moduleId", module.id())
                     .metadata("modulePath", module.relativePath())
                     .metadata("declaredAtLine", module.line())
@@ -124,13 +137,15 @@ public class ScalaSbtLanguageParser implements LanguageParser {
      * Names this repository answers to when another repository references it: the service name, the
      * directory name, and its published artifact coordinates.
      */
-    private List<String> aliases(SbtBuild build, RepoCandidate candidate) {
+    private List<String> aliases(SbtBuild build, RepoCandidate candidate, RepoFiles files) {
         Set<String> aliases = new LinkedHashSet<>();
         aliases.add(build.name());
         aliases.add(candidate.directoryName());
         for (SbtModule module : build.modules()) {
             aliases.add(module.name());
         }
+        // Packages this repo declares, so another repo's import of them resolves here (FR-3.5).
+        aliases.addAll(ScalaSources.read(files).declaredPackages());
         return List.copyOf(aliases);
     }
 

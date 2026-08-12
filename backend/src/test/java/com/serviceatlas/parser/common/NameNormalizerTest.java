@@ -64,6 +64,14 @@ class NameNormalizerTest {
     }
 
     @Test
+    @DisplayName("A public domain keeps its full host: api.stripe.com must not collapse to 'api'")
+    void serviceLabelKeepsPublicDomains() {
+        assertThat(NameNormalizer.serviceLabelOf("https://api.stripe.com/v1/charges"))
+                .isEqualTo("api.stripe.com");
+        assertThat(NameNormalizer.firstLabelOf("https://api.stripe.com/v1/charges")).isEqualTo("api");
+    }
+
+    @Test
     void blankInputIsHandled() {
         assertThat(NameNormalizer.canonical(null)).isEmpty();
         assertThat(NameNormalizer.canonical("  ")).isEmpty();

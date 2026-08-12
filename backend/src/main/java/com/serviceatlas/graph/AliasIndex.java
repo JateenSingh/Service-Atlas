@@ -86,17 +86,15 @@ public final class AliasIndex {
         return Optional.empty();
     }
 
-    /** The successively more aggressive readings of a reference: as-is, host-only, label-only. */
+    /** The successively more aggressive readings of a reference: as-is, host-only, first label. */
     private static java.util.List<String> candidates(String rawReference) {
-        String host = NameNormalizer.hostOf(rawReference);
-        String label = NameNormalizer.serviceLabelOf(rawReference);
         java.util.List<String> candidates = new java.util.ArrayList<>(3);
         candidates.add(rawReference);
-        if (!host.isBlank() && !host.equals(rawReference)) {
-            candidates.add(host);
-        }
-        if (!label.isBlank() && !label.equals(host) && !label.equals(rawReference)) {
-            candidates.add(label);
+        for (String reading : java.util.List.of(
+                NameNormalizer.hostOf(rawReference), NameNormalizer.firstLabelOf(rawReference))) {
+            if (!reading.isBlank() && !candidates.contains(reading)) {
+                candidates.add(reading);
+            }
         }
         return candidates;
     }
