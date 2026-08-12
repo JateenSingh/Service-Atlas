@@ -49,13 +49,13 @@ test.describe('scan the fixture estate and export it', () => {
     const nodes = page.locator('g.node');
     const edges = page.locator('g.edge');
 
-    // Nine repositories, one deployable sub-module, three topics, three external services and
-    // six datastores.
-    await expect(nodes).toHaveCount(23);
-    await expect(edges).toHaveCount(32);
+    // Nine repositories, one deployable sub-module, four topics, three external services and
+    // eight datastores.
+    await expect(nodes).toHaveCount(26);
+    await expect(edges).toHaveCount(35);
 
-    await expect(page.locator('.toolbar-stats')).toContainText('23 nodes');
-    await expect(page.locator('.toolbar-stats')).toContainText('32 dependencies');
+    await expect(page.locator('.toolbar-stats')).toContainText('26 nodes');
+    await expect(page.locator('.toolbar-stats')).toContainText('35 dependencies');
 
     // Every signal source in FR-3 is represented on the canvas.
     const graph = await page.evaluate(async () => {
@@ -97,10 +97,22 @@ test.describe('scan the fixture estate and export it', () => {
     await page.locator('.chip', { hasText: 'HIGH' }).click();
     await page.waitForTimeout(1_200);
     const highOnly = await edges.count();
-    expect(highOnly).toBeLessThan(32);
+    expect(highOnly).toBeLessThan(35);
     await page.getByRole('button', { name: 'Reset filters' }).click();
     await page.waitForTimeout(1_200);
-    await expect(edges).toHaveCount(32);
+    await expect(edges).toHaveCount(35);
+
+    // Datastores can be taken off the diagram without touching anything else (FR-5.5).
+    const datastores = page.locator('g.node.datastore');
+    const datastoreCount = await datastores.count();
+    expect(datastoreCount).toBe(8);
+    await page.locator('.filter-group', { hasText: 'Datastores' }).getByRole('button').click();
+    await page.waitForTimeout(1_200);
+    await expect(datastores).toHaveCount(0);
+    await expect(nodes).toHaveCount(26 - datastoreCount);
+    await page.getByRole('button', { name: 'Reset filters' }).click();
+    await page.waitForTimeout(1_200);
+    await expect(nodes).toHaveCount(26);
 
     // ---------------------------------------------------------------- export (FR-6.1)
     await page.getByRole('button', { name: 'Export' }).click();
@@ -133,8 +145,8 @@ test.describe('scan the fixture estate and export it', () => {
     expect(document.pages).toHaveLength(1);
 
     const page1 = document.pages[0];
-    expect(page1.shapes.length).toBeGreaterThanOrEqual(23);
-    expect(page1.lines).toHaveLength(32);
+    expect(page1.shapes.length).toBeGreaterThanOrEqual(26);
+    expect(page1.lines).toHaveLength(35);
 
     // Shapes carry position, style and text; lines attach to real shapes at both ends.
     const shapeIds = new Set(page1.shapes.map((shape: { id: string }) => shape.id));

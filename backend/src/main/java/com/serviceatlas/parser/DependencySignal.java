@@ -54,6 +54,12 @@ public record DependencySignal(
                 source.defaultConfidence(), evidence);
     }
 
+    /** The same signal, held to a different confidence than its source's default. */
+    public DependencySignal withConfidence(Confidence value) {
+        return new DependencySignal(
+                sourceNodeKey, targetHint, topicName, datastore, source, edgeType, value, evidence);
+    }
+
     public boolean isMessaging() {
         return topicName != null && !topicName.isBlank();
     }

@@ -2,6 +2,7 @@ package com.serviceatlas.parser.scala;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.serviceatlas.graph.model.Confidence;
 import com.serviceatlas.graph.model.SignalSource;
 import com.serviceatlas.parser.DependencySignal;
 import com.serviceatlas.parser.common.RepoFiles;
@@ -102,6 +103,131 @@ class GooglePubSubScannerTest {
         // which topic that reads, so the flow lands on the topic and not on a subscriber-shaped node.
         assertThat(flows(Fixtures.repo("log-inventory-svc"), "loginventorysvc"))
                 .doesNotContain("PUBSUB_SUBSCRIBER:order-events-inventory-sub");
+    }
+
+    @Test
+    @DisplayName("A resource path is Pub/Sub wherever it appears, whatever the key is called")
+    void resourcePathsIdentifyThemselves(@TempDir Path temp) throws IOException {
+        Path repo = repo(temp, "log-plain-key-svc", """
+                messaging.template-renders.topic = "projects/acme/topics/template-renders"
+                """);
+
+        assertThat(flows(repo, "logplainkeysvc")).containsExactly("PUBSUB_PUBLISHER:template-renders");
+    }
+
+    @Test
+    @DisplayName("A Pub/Sub client on the classpath makes a bare topic key Pub/Sub")
+    void theClasspathVouchesForABareTopicKey(@TempDir Path temp) throws IOException {
+        Path repo = temp.resolve("log-client-svc");
+        Files.createDirectories(repo.resolve("conf"));
+        Files.writeString(repo.resolve("build.sbt"), """
+                name := "log-client-svc"
+                libraryDependencies ++= Seq(
+                  "com.google.cloud" % "google-cloud-pubsub" % "1.132.3"
+                )
+                """);
+        Files.writeString(repo.resolve("conf/application.conf"), """
+                events.topic = "shipment-events"
+                """);
+
+        assertThat(flows(repo, "logclientsvc")).containsExactly("PUBSUB_PUBLISHER:shipment-events");
+    }
+
+    @Test
+    @DisplayName("A publisher whose topic comes from config still gets its edge")
+    void aPublisherWithoutALiteralIsAttributed(@TempDir Path temp) throws IOException {
+        // The shape that hid publishes entirely: the topic is named beside the subscription, and
+        // the code reads it from config rather than writing it inline.
+        Path repo = repo(temp, "log-runtime-svc", """
+                pubsub.orders {
+                  topic = "order-events"
+                  subscription = "order-events-runtime-sub"
+                }
+                """);
+        Files.createDirectories(repo.resolve("app/pubsub"));
+        Files.writeString(repo.resolve("app/pubsub/Events.scala"), """
+                package pubsub
+
+                import com.google.cloud.pubsub.v1.Publisher
+                import com.google.pubsub.v1.TopicName
+
+                class Events(config: Config) {
+                  private val topic = TopicName.of(config.getString("pubsub.orders.project"),
+                                                   config.getString("pubsub.orders.topic"))
+                  private val publisher = Publisher.newBuilder(topic).build()
+                }
+                """);
+
+        assertThat(flows(repo, "logruntimesvc"))
+                .contains("PUBSUB_PUBLISHER:order-events", "PUBSUB_SUBSCRIBER:order-events");
+        assertThat(scan(repo, "logruntimesvc"))
+                .filteredOn(signal -> signal.source() == SignalSource.PUBSUB_PUBLISHER)
+                .singleElement()
+                .satisfies(signal -> assertThat(signal.confidence())
+                        .as("inferred from a publisher, not read from code")
+                        .isEqualTo(Confidence.LOW));
+    }
+
+    @Test
+    @DisplayName("Two unattributed topics stay unattributed rather than becoming two guesses")
+    void ambiguityIsNotResolvedByGuessing(@TempDir Path temp) throws IOException {
+        Path repo = repo(temp, "log-two-svc", """
+                pubsub.orders {
+                  topic = "order-events"
+                  subscription = "order-events-two-sub"
+                }
+                pubsub.payments {
+                  topic = "payment-events"
+                  subscription = "payment-events-two-sub"
+                }
+                """);
+        Files.createDirectories(repo.resolve("app/pubsub"));
+        Files.writeString(repo.resolve("app/pubsub/Events.scala"), """
+                package pubsub
+
+                import com.google.cloud.pubsub.v1.Publisher
+
+                class Events { private val publisher = Publisher.newBuilder(topic).build() }
+                """);
+
+        assertThat(flows(repo, "logtwosvc"))
+                .noneMatch(flow -> flow.startsWith("PUBSUB_PUBLISHER"));
+    }
+
+    @Test
+    @DisplayName("A topic name held in a val is followed like any other indirection")
+    void followsTopicConstants(@TempDir Path temp) throws IOException {
+        Path repo = repo(temp, "log-const-svc", "app.name = \"log-const-svc\"");
+        Files.createDirectories(repo.resolve("app/pubsub"));
+        Files.writeString(repo.resolve("app/pubsub/Publisher.scala"), """
+                package pubsub
+
+                import com.google.cloud.pubsub.v1.Publisher
+                import com.google.pubsub.v1.TopicName
+
+                object Topics { val Renders = "template-renders" }
+
+                class RenderPublisher(projectId: String) {
+                  private val topic = TopicName.of(projectId, Topics.Renders)
+                  private val publisher = Publisher.newBuilder(topic).build()
+                }
+                """);
+
+        assertThat(flows(repo, "logconstsvc")).contains("PUBSUB_PUBLISHER:template-renders");
+    }
+
+    @Test
+    @DisplayName("A key path that states its direction is believed over any heuristic")
+    void keyPathDirectionWins(@TempDir Path temp) throws IOException {
+        Path repo = repo(temp, "log-explicit-svc", """
+                pubsub {
+                  publisher.topic = "audit-events"
+                  consumer.topic = "order-events"
+                }
+                """);
+
+        assertThat(flows(repo, "logexplicitsvc")).containsExactlyInAnyOrder(
+                "PUBSUB_PUBLISHER:audit-events", "PUBSUB_SUBSCRIBER:order-events");
     }
 
     @Test

@@ -6,12 +6,14 @@ import com.serviceatlas.parser.DatastoreRef;
 import com.serviceatlas.parser.DependencySignal;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 /**
@@ -20,8 +22,10 @@ import org.springframework.stereotype.Component;
  * <p>Three tiers of evidence, deliberately weighted differently:
  *
  * <ul>
- *   <li><b>Connection strings</b> in configuration (HIGH) — a JDBC URL names an engine, a host and
- *       usually a database. This is the strongest thing static analysis can find.
+ *   <li><b>Configuration</b> (HIGH) — a connection string names an engine, a host and usually a
+ *       database; a {@code dbname}/{@code database}/{@code keyspace} key names the database on its
+ *       own; a driver class or Slick profile names the engine. These are read together, per config
+ *       block, so a block that spreads them across three keys still produces one datastore.
  *   <li><b>Schema ownership</b> (HIGH) — a service shipping Flyway migrations or Play evolutions
  *       owns that schema, even when the URL only ever arrives from the environment. Without this
  *       tier, exactly the services with the most disciplined configuration would go undrawn.
@@ -29,6 +33,9 @@ import org.springframework.stereotype.Component;
  *       likely but names nothing. Emitted only when the first two tiers found nothing at all, so a
  *       service is never drawn with both a real database and a vague one.
  * </ul>
+ *
+ * <p>Every reference is attributed to the service that configured it, so the ones nothing named
+ * stay one-per-service instead of collapsing into a single node called "PostgreSQL".
  */
 @Component
 public final class DatastoreScanner implements ScalaSignalScanner {
@@ -51,6 +58,37 @@ public final class DatastoreScanner implements ScalaSignalScanner {
             Map.entry("com.google.cloud:google-cloud-bigtable", DatastoreRef.BIGTABLE),
             Map.entry("com.google.cloud:google-cloud-spanner", DatastoreRef.SPANNER),
             Map.entry("com.google.cloud:google-cloud-bigquery", DatastoreRef.BIGQUERY));
+
+    /**
+     * Fragments that identify an engine inside a driver class, a Slick profile or a config key —
+     * the shapes a config file uses to say which database it means without writing a URL. Ordered,
+     * so {@code mariadb} is recognised before the {@code mysql} its driver name also contains.
+     */
+    private static final Map<String, String> ENGINE_FRAGMENTS = new LinkedHashMap<>();
+
+    static {
+        ENGINE_FRAGMENTS.put("postgres", DatastoreRef.POSTGRES);
+        ENGINE_FRAGMENTS.put("mariadb", DatastoreRef.MARIADB);
+        ENGINE_FRAGMENTS.put("mysql", DatastoreRef.MYSQL);
+        ENGINE_FRAGMENTS.put("sqlserver", DatastoreRef.SQL_SERVER);
+        ENGINE_FRAGMENTS.put("oracle", DatastoreRef.ORACLE);
+        ENGINE_FRAGMENTS.put("mongo", DatastoreRef.MONGODB);
+        ENGINE_FRAGMENTS.put("cassandra", DatastoreRef.CASSANDRA);
+        ENGINE_FRAGMENTS.put("elastic", DatastoreRef.ELASTICSEARCH);
+        ENGINE_FRAGMENTS.put("bigquery", DatastoreRef.BIGQUERY);
+        ENGINE_FRAGMENTS.put("redis", DatastoreRef.REDIS);
+    }
+
+    /** Key leaves whose value is the name of a database, schema or keyspace. */
+    private static final Set<String> NAME_KEYS = Set.of(
+            "dbname", "database", "databasename", "keyspace", "catalog");
+
+    /** Key leaves whose value names a driver class or a Slick profile. */
+    private static final Set<String> ENGINE_KEYS = Set.of(
+            "driver", "driverclass", "driverclassname", "profile", "dialect");
+
+    /** A plausible database name: not a path, not a class name, not a sentence. */
+    private static final Pattern NAME_VALUE = Pattern.compile("^[A-Za-z][A-Za-z0-9_\\-]{1,62}$");
 
     /** Engines whose schema a migration folder could describe. */
     private static final Set<String> RELATIONAL_ENGINES = Set.of(
@@ -95,21 +133,67 @@ public final class DatastoreScanner implements ScalaSignalScanner {
         return relational.size() == 1 ? Optional.of(relational.get(0)) : Optional.empty();
     }
 
-    /** Connection strings in HOCON configuration — the strongest evidence available. */
-    private List<DependencySignal> fromConfiguration(ScalaScanContext context, Set<String> seen) {
-        List<DependencySignal> signals = new ArrayList<>();
+    // ---------------------------------------------------------------- configuration
 
-        for (ConfigValues.Entry entry : ConfigValues.read(context.files()).entries()) {
-            if (entry.parseFailed()) {
+    /** One config block's worth of datastore facts, gathered before any of them becomes a signal. */
+    private static final class Candidate {
+        private DatastoreRef ref;
+        private ConfigValues.Entry evidence;
+
+        Candidate(DatastoreRef ref, ConfigValues.Entry evidence) {
+            this.ref = ref;
+            this.evidence = evidence;
+        }
+    }
+
+    private List<DependencySignal> fromConfiguration(ScalaScanContext context, Set<String> seen) {
+        List<ConfigValues.Entry> entries = ConfigValues.read(context.files()).entries().stream()
+                .filter(entry -> !entry.parseFailed())
+                .toList();
+
+        Map<String, Candidate> blocks = new LinkedHashMap<>();
+
+        // A connection string identifies itself by its scheme, so every string value is worth
+        // testing and the key name adds nothing.
+        for (ConfigValues.Entry entry : entries) {
+            ConnectionStrings.parse(entry.value())
+                    .ifPresent(ref -> blocks.putIfAbsent(parentOf(entry.key()), new Candidate(ref, entry)));
+        }
+
+        // A driver class or Slick profile names the engine for a block that had no URL at all.
+        for (ConfigValues.Entry entry : entries) {
+            if (!leafIsIn(entry, ENGINE_KEYS)) {
                 continue;
             }
-            // A connection string identifies itself by its scheme, so every string value is worth
-            // testing and the key name adds nothing.
-            Optional<DatastoreRef> parsed = ConnectionStrings.parse(entry.value());
-            if (parsed.isEmpty()) {
+            engineFragment(entry.value()).ifPresent(engine -> blocks.computeIfAbsent(
+                    parentOf(entry.key()),
+                    path -> new Candidate(DatastoreRef.of(engine, null, null), entry)));
+        }
+
+        // A name key fills in the database for the block it belongs to, or stands on its own.
+        for (ConfigValues.Entry entry : entries) {
+            String name = entry.value().strip();
+            if (!leafIsIn(entry, NAME_KEYS) || !NAME_VALUE.matcher(name).matches()) {
                 continue;
             }
-            DatastoreRef datastore = parsed.get();
+            String parent = parentOf(entry.key());
+            Candidate block = nearestBlock(blocks, parent);
+            if (block != null) {
+                if (block.ref.database() == null) {
+                    block.ref = block.ref.named(name);
+                    block.evidence = entry;
+                }
+                continue;
+            }
+            String engine = engineFragment(entry.key())
+                    .or(() -> engineFromDrivers(context))
+                    .orElse(DatastoreRef.UNKNOWN_ENGINE);
+            blocks.put(parent, new Candidate(DatastoreRef.of(engine, name, null), entry));
+        }
+
+        List<DependencySignal> signals = new ArrayList<>();
+        for (Candidate candidate : blocks.values()) {
+            DatastoreRef datastore = candidate.ref.ownedBy(context.build().name());
             if (datastore.isLocalOnly()) {
                 // An embedded H2 or a localhost dev database is not part of the architecture.
                 continue;
@@ -117,18 +201,80 @@ public final class DatastoreScanner implements ScalaSignalScanner {
             if (!seen.add(datastore.nodeKey())) {
                 continue;
             }
+            ConfigValues.Entry entry = candidate.evidence;
             Evidence evidence = Evidence.of(
                     SignalSource.DATASTORE_CONNECTION,
                     entry.file(),
                     entry.line(),
                     entry.key() + " = \"" + entry.value() + "\"",
-                    "Connects to " + datastore.engine()
-                            + (datastore.database() == null ? "" : " database '" + datastore.database() + "'"));
+                    describe(datastore));
             signals.add(DependencySignal.persistence(
                     context.nodeKey(), datastore, SignalSource.DATASTORE_CONNECTION, evidence));
         }
         return signals;
     }
+
+    private String describe(DatastoreRef datastore) {
+        if (datastore.database() != null) {
+            return "Connects to " + datastore.engine() + " database '" + datastore.database() + "'";
+        }
+        if (datastore.host() != null) {
+            return "Connects to " + datastore.engine() + " at " + datastore.host();
+        }
+        return "Connects to " + datastore.engine()
+                + ", but the configuration never names the database — it comes from the environment";
+    }
+
+    /**
+     * The block a name key belongs to: the deepest connection block whose path is related to the
+     * key's own, so {@code slick.dbs.default.db.properties.databaseName} finds the URL configured
+     * at {@code slick.dbs.default.db}. Failing that, a single block in the file claims it.
+     */
+    private Candidate nearestBlock(Map<String, Candidate> blocks, String parent) {
+        Candidate best = null;
+        int bestLength = -1;
+        for (Map.Entry<String, Candidate> block : blocks.entrySet()) {
+            String path = block.getKey();
+            boolean related = parent.equals(path)
+                    || parent.startsWith(path + ".")
+                    || path.startsWith(parent + ".");
+            if (related && path.length() > bestLength) {
+                best = block.getValue();
+                bestLength = path.length();
+            }
+        }
+        return best != null ? best : (blocks.size() == 1 ? blocks.values().iterator().next() : null);
+    }
+
+    /** Reads an engine out of a driver class, a Slick profile or a config key path. */
+    private Optional<String> engineFragment(String value) {
+        if (value == null) {
+            return Optional.empty();
+        }
+        String lower = value.toLowerCase(Locale.ROOT);
+        return ENGINE_FRAGMENTS.entrySet().stream()
+                .filter(fragment -> lower.contains(fragment.getKey()))
+                .map(Map.Entry::getValue)
+                .findFirst();
+    }
+
+    private boolean leafIsIn(ConfigValues.Entry entry, Set<String> leaves) {
+        List<String> tokens = entry.keyTokens();
+        if (tokens.isEmpty()) {
+            return false;
+        }
+        // Key tokens are split on separators, so "databaseName" arrives as [database, name].
+        String leaf = tokens.get(tokens.size() - 1);
+        String pair = tokens.size() >= 2 ? tokens.get(tokens.size() - 2) + leaf : leaf;
+        return leaves.contains(leaf) || leaves.contains(pair);
+    }
+
+    private String parentOf(String key) {
+        int dot = key.lastIndexOf('.');
+        return dot > 0 ? key.substring(0, dot) : "";
+    }
+
+    // ---------------------------------------------------------------- schema and drivers
 
     /**
      * Migration and evolution directories: a service that ships schema for a database uses that
@@ -147,12 +293,13 @@ public final class DatastoreScanner implements ScalaSignalScanner {
                 continue;
             }
 
-            // Attach to the configured database when there is one; otherwise the migration is all
-            // we have, and the service name is the honest label for the schema it owns.
+            // Attach to the configured database when there is one; otherwise the migrations prove a
+            // database exists without naming it, and it belongs to the service that ships them.
             DatastoreRef datastore = configured.orElseGet(() -> DatastoreRef.of(
                     engineFromDrivers(context).orElse(DatastoreRef.UNKNOWN_ENGINE),
-                    context.build().name(),
-                    null));
+                    null,
+                    null,
+                    context.build().name()));
             if (!seen.add("schema:" + datastore.nodeKey())) {
                 continue;
             }
@@ -181,7 +328,7 @@ public final class DatastoreScanner implements ScalaSignalScanner {
             if (engine == null || !seenEngines.add(engine)) {
                 continue;
             }
-            DatastoreRef datastore = DatastoreRef.of(engine, null, null);
+            DatastoreRef datastore = DatastoreRef.of(engine, null, null, context.build().name());
             Evidence evidence = Evidence.of(
                     SignalSource.DATASTORE_DRIVER,
                     dependency.file(),

@@ -84,8 +84,8 @@ are absent, the API export option is hidden in the UI.
 | Service URL / host / discovery key | `application.conf`, `reference.conf` | HIGH |
 | HTTP client call | `ws.url`, `WSClient`, sttp, http4s, Akka/Pekko HTTP clients | MEDIUM |
 | Kafka / RabbitMQ produce & consume | config and client APIs, via a topic node | MEDIUM |
-| Google Pub/Sub publish & subscribe | `pubsub.*` config, `TopicName.of`, `Subscriber`, Alpakka | MEDIUM |
-| Database / cache connection | JDBC, MongoDB and Redis connection strings in config | HIGH |
+| Google Pub/Sub publish & subscribe | `projects/…/topics/…` paths, `pubsub.*` config, `TopicName.of`, `Subscriber`, Alpakka | MEDIUM |
+| Database / cache connection | JDBC, MongoDB and Redis connection strings; `dbname`/`database`/`keyspace` keys; driver classes and Slick profiles | HIGH |
 | Schema ownership | Flyway migrations, Play evolutions | HIGH |
 | Database driver on the classpath | `org.postgresql:postgresql`, `io.lettuce:lettuce-core`, … | LOW |
 | Cross-service package import | `import com.company.logusersvc._` | LOW |
@@ -96,7 +96,10 @@ if you only want to see what is certain.
 
 Datastores are drawn as cylinders and keyed by **engine + database name**, not by hostname, so two
 services reaching one database through different hosts converge on a single node — a shared database
-is coupling, and the diagram should say so. Google Pub/Sub flows use the same topic node as Kafka,
+is coupling, and the diagram should say so. A database nothing names — the URL comes from the
+environment, or only a driver is on the classpath — belongs to the service that configured it and is
+drawn as `<service> db`, never merged with every other service's unnamed database of the same engine.
+Datastores have their own show/hide filter. Google Pub/Sub flows use the same topic node as Kafka,
 tagged with the broker, so a topic reads as "this sits between these services" whatever carries it.
 
 Name matching is spelling-insensitive: `log-quote-svc`, `logQuoteSvc` and `LOG_QUOTE_SVC` are the

@@ -114,6 +114,19 @@
         </button>
       </div>
 
+      <div class="filter-group">
+        <span class="filter-label">Datastores</span>
+        <button
+          class="chip"
+          type="button"
+          [class.on]="graphStore.filters().showDatastores"
+          (click)="toggleDatastores()"
+          [attr.aria-pressed]="graphStore.filters().showDatastores"
+        >
+          {{ graphStore.filters().showDatastores ? 'Shown' : 'Hidden' }}
+        </button>
+      </div>
+
       <button class="btn btn-ghost" type="button" (click)="resetFilters()">Reset filters</button>
     </div>
   }

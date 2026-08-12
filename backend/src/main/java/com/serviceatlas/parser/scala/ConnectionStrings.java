@@ -19,10 +19,15 @@ public final class ConnectionStrings {
     /**
      * {@code jdbc:postgresql://host:5432/orders?ssl=true}, and the semicolon-separated property
      * tails that SQL Server and H2 use: {@code jdbc:sqlserver://host;databaseName=orders}.
+     *
+     * <p>Host and database are both optional, because a URL assembled from environment variables
+     * resolves to {@code jdbc:postgresql://:5432/} — which still says, reliably, that this service
+     * talks to PostgreSQL. Rejecting it would push the service down to the driver tier and lose
+     * that; the missing name is handled by identity falling back to the owning service.
      */
     private static final Pattern JDBC = Pattern.compile(
-            "^jdbc:([a-z0-9]+):(?://(?<host>[^/:;,?]+)(?::\\d+)?)?"
-                    + "(?:[^;?]*?/(?<db>[A-Za-z0-9_.\\-]+))?(?:[;?].*)?$",
+            "^jdbc:([a-z0-9]+):(?://(?<host>[^/:;,?]*)(?::\\d+)?)?"
+                    + "(?:[^;?]*?/(?<db>[A-Za-z0-9_.\\-]*))?(?:[;?].*)?$",
             Pattern.CASE_INSENSITIVE);
 
     /** SQL Server puts the database in a property: {@code jdbc:sqlserver://host;databaseName=orders} */

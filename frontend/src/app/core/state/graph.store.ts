@@ -23,6 +23,7 @@ export interface GraphFilters {
   edgeTypes: Set<EdgeType>;
   minConfidence: Confidence;
   showExternal: boolean;
+  showDatastores: boolean;
   search: string;
 }
 
@@ -30,6 +31,7 @@ const DEFAULT_FILTERS: GraphFilters = {
   edgeTypes: new Set<EdgeType>(['HTTP', 'ARTIFACT', 'MESSAGING', 'PERSISTENCE', 'UNKNOWN']),
   minConfidence: 'LOW',
   showExternal: true,
+  showDatastores: true,
   search: '',
 };
 
@@ -84,7 +86,10 @@ export class GraphStore {
       (node.repoPath ?? '').toLowerCase().includes(search);
 
     const visibleNodes = nodes.filter(
-      (node) => (filters.showExternal || node.type !== 'EXTERNAL') && matchesSearch(node),
+      (node) =>
+        (filters.showExternal || node.type !== 'EXTERNAL') &&
+        (filters.showDatastores || node.type !== 'DATASTORE') &&
+        matchesSearch(node),
     );
     const visibleKeys = new Set(visibleNodes.map((node) => node.key));
 
@@ -297,6 +302,11 @@ export class GraphStore {
     this.filtersSignal.update((filters) => ({ ...filters, showExternal }));
   }
 
+  /** Databases and caches are infrastructure; some readings of a diagram want them out of the way. */
+  setShowDatastores(showDatastores: boolean): void {
+    this.filtersSignal.update((filters) => ({ ...filters, showDatastores }));
+  }
+
   resetFilters(): void {
     this.filtersSignal.set({ ...DEFAULT_FILTERS, edgeTypes: new Set(DEFAULT_FILTERS.edgeTypes) });
   }
@@ -308,6 +318,7 @@ export class GraphStore {
       filters.edgeTypes.size !== DEFAULT_FILTERS.edgeTypes.size ||
       filters.minConfidence !== DEFAULT_FILTERS.minConfidence ||
       filters.showExternal !== DEFAULT_FILTERS.showExternal ||
+      filters.showDatastores !== DEFAULT_FILTERS.showDatastores ||
       filters.search.trim() !== ''
     );
   });

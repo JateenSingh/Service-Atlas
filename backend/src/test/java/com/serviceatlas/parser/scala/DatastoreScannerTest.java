@@ -96,15 +96,18 @@ class DatastoreScannerTest {
     }
 
     @Test
-    @DisplayName("Play evolutions alone still name a schema, using the service's own name")
+    @DisplayName("Play evolutions alone are a datastore, owned by the service that ships them")
     void evolutionsWithoutAUrlAreStillADatastore() {
         List<DependencySignal> signals = scan(Fixtures.repo("log-user-svc"), "logusersvc");
 
         assertThat(signals).singleElement().satisfies(signal -> {
             assertThat(signal.source()).isEqualTo(SignalSource.DATASTORE_SCHEMA);
-            // The driver on the classpath names the engine; the service names the schema.
+            // The driver on the classpath names the engine; nothing names the database, so the
+            // service owns it and the node is labelled — and keyed — accordingly.
             assertThat(signal.datastore().engine()).isEqualTo(DatastoreRef.POSTGRES);
-            assertThat(signal.datastore().database()).isEqualTo("log-user-svc");
+            assertThat(signal.datastore().database()).isNull();
+            assertThat(signal.datastore().displayName()).isEqualTo("log-user-svc db");
+            assertThat(signal.datastore().nodeKey()).isEqualTo("datastore:postgresql:logusersvc");
             assertThat(signal.confidence()).isEqualTo(Confidence.HIGH);
         });
     }
@@ -129,6 +132,115 @@ class DatastoreScannerTest {
                     assertThat(signal.datastore().engine()).isEqualTo(DatastoreRef.BIGQUERY);
                     assertThat(signal.datastore().database()).isEqualTo("audit");
                 });
+    }
+
+    @Test
+    @DisplayName("A URL assembled from environment variables still names its engine")
+    void readsUrlsBuiltFromTheEnvironment(@TempDir Path temp) throws IOException {
+        // HOCON resolves this to "jdbc:postgresql://:5432/" — no host, no database, but the engine
+        // is beyond doubt, and that is worth a HIGH signal rather than a driver-tier guess.
+        Path repo = repo(temp, "log-env-svc", """
+                db.default {
+                  driver = "org.postgresql.Driver"
+                  url = "jdbc:postgresql://"${?DB_HOST}":5432/"${?DB_NAME}
+                }
+                """);
+
+        assertThat(scan(repo, "logenvsvc")).singleElement().satisfies(signal -> {
+            assertThat(signal.source()).isEqualTo(SignalSource.DATASTORE_CONNECTION);
+            assertThat(signal.datastore().engine()).isEqualTo(DatastoreRef.POSTGRES);
+            assertThat(signal.datastore().isUnnamed()).isTrue();
+            assertThat(signal.datastore().displayName()).isEqualTo("log-env-svc db");
+        });
+    }
+
+    @Test
+    @DisplayName("Two services with nothing but a driver get a database each, not one shared one")
+    void unnamedDatastoresDoNotMerge(@TempDir Path temp) throws IOException {
+        String driver = "\nlibraryDependencies ++= Seq(\"org.postgresql\" % \"postgresql\" % \"42.7.3\")\n";
+        Path first = repo(temp, "log-alpha-svc", "app.name = \"alpha\"",
+                "name := \"log-alpha-svc\"" + driver);
+        Path second = repo(temp, "log-beta-svc", "app.name = \"beta\"",
+                "name := \"log-beta-svc\"" + driver);
+
+        String alpha = scan(first, "logalphasvc").get(0).datastore().nodeKey();
+        String beta = scan(second, "logbetasvc").get(0).datastore().nodeKey();
+
+        assertThat(alpha).isNotEqualTo(beta);
+        assertThat(alpha).isEqualTo("datastore:postgresql:logalphasvc");
+    }
+
+    @Test
+    @DisplayName("A placeholder left in the URL is not a name")
+    void placeholdersAreNotNames(@TempDir Path temp) throws IOException {
+        Path repo = repo(temp, "log-token-svc", """
+                db.default.url = "jdbc:postgresql://${DB_HOST}:5432/orders"
+                """);
+
+        assertThat(scan(repo, "logtokensvc")).singleElement().satisfies(signal -> {
+            assertThat(signal.datastore().database()).isEqualTo("orders");
+            assertThat(signal.datastore().host()).as("${DB_HOST} is not a hostname").isNull();
+        });
+    }
+
+    @Test
+    @DisplayName("A dbname key names the database its own block never did")
+    void readsDatabaseNameKeys(@TempDir Path temp) throws IOException {
+        Path repo = repo(temp, "log-named-svc", """
+                db.default {
+                  driver = "org.postgresql.Driver"
+                  url = ${?DB_URL}
+                  dbname = "shipments"
+                }
+                """);
+
+        assertThat(scan(repo, "lognamedsvc")).singleElement().satisfies(signal -> {
+            assertThat(signal.datastore().engine()).isEqualTo(DatastoreRef.POSTGRES);
+            assertThat(signal.datastore().database()).isEqualTo("shipments");
+        });
+    }
+
+    @Test
+    @DisplayName("A name nested under the connection block belongs to it, not to a second database")
+    void nestedNamesJoinTheirBlock(@TempDir Path temp) throws IOException {
+        Path repo = repo(temp, "log-slick-svc", """
+                slick.dbs.default.db {
+                  url = "jdbc:postgresql://tracking-db:5432/"
+                  properties.databaseName = "tracking"
+                }
+                """);
+
+        assertThat(scan(repo, "logslicksvc")).singleElement().satisfies(signal ->
+                assertThat(signal.datastore().nodeKey()).isEqualTo("datastore:postgresql:tracking"));
+    }
+
+    @Test
+    @DisplayName("A Slick profile names the engine when no driver class does")
+    void readsSlickProfiles(@TempDir Path temp) throws IOException {
+        Path repo = repo(temp, "log-profile-svc", """
+                slick.dbs.default {
+                  profile = "slick.jdbc.MySQLProfile$"
+                  db.dbname = "billing"
+                }
+                """);
+
+        assertThat(scan(repo, "logprofilesvc")).singleElement().satisfies(signal -> {
+            assertThat(signal.datastore().engine()).isEqualTo(DatastoreRef.MYSQL);
+            assertThat(signal.datastore().database()).isEqualTo("billing");
+        });
+    }
+
+    @Test
+    @DisplayName("A database key under a Mongo block is a Mongo database")
+    void engineComesFromTheKeyPathWhenNothingElseSaysIt(@TempDir Path temp) throws IOException {
+        Path repo = repo(temp, "log-doc-svc", """
+                mongodb.database = "notifications"
+                """);
+
+        assertThat(scan(repo, "logdocsvc")).singleElement().satisfies(signal -> {
+            assertThat(signal.datastore().engine()).isEqualTo(DatastoreRef.MONGODB);
+            assertThat(signal.datastore().database()).isEqualTo("notifications");
+        });
     }
 
     @Test

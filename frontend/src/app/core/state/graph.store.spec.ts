@@ -296,6 +296,19 @@ describe('GraphStore with datastores and topics', () => {
     expect(store.selectedNodeEdges().outgoing).toEqual([]);
   });
 
+  it('hides datastores on request, and the persistence edges with them', () => {
+    store.setShowDatastores(false);
+
+    expect(store.visibleGraph().nodes.map((node) => node.key)).not.toContain(
+      'datastore:redis:pricingcache',
+    );
+    expect(store.visibleGraph().edges.map((edge) => edge.type)).toEqual(['MESSAGING']);
+    expect(store.filtersActive()).toBeTrue();
+
+    store.resetFilters();
+    expect(store.visibleNodeCount()).toBe(4);
+  });
+
   it('a datastore is searchable by name like anything else', () => {
     store.setSearch('pricing');
 

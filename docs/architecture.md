@@ -159,27 +159,41 @@ A datastore node's identity is `engine + database name`. Deliberately *not* the 
 database is reached as `orders-db.prod.svc.cluster.local` from one service, through `pgbouncer` from
 another, and from an environment variable in a third. Keying on the host would draw three databases
 and hide the one fact worth drawing — that two services share a store, which is coupling. Where the
-connection string names no database, the host is the fallback identity, which is the most that can
-honestly be said.
+connection string names no database, the host is the fallback identity.
+
+Where **nothing** names it — a URL assembled from environment variables, or only a driver on the
+classpath — identity falls back to the *owning service*, and the node is labelled `<service> db` with
+the engine as its subtitle. The tempting fallback, keying on the engine, is wrong in a way worth
+spelling out: it merges every service that happens to use PostgreSQL into one node called
+"PostgreSQL", inventing exactly the false coupling the host rule above exists to avoid. Convergence
+has to be earned by a name two services actually share.
 
 Three tiers of evidence feed it, weighted differently on purpose:
 
 | Tier | What it reads | Confidence |
 |---|---|---|
-| Connection string | JDBC / MongoDB / Redis URLs in HOCON | HIGH |
+| Configuration | connection strings; `dbname`/`database`/`keyspace` keys; driver classes and Slick profiles | HIGH |
 | Schema ownership | Flyway migrations, Play evolutions | HIGH |
 | Driver dependency | a driver coordinate in `libraryDependencies` | LOW |
 
-The middle tier exists because the services with the most disciplined configuration — URL entirely
-from the environment — would otherwise be the ones drawn with no database at all. Migrations attach
-to the connection the service already configured when there is exactly one relational candidate, so
-a service with both a JDBC URL and a migration folder has one database rather than two. The driver
-tier is emitted **only** when the first two found nothing, so a service is never shown with both a
-real database and a vague one; and `ConfigReferenceScanner` defers to `ConnectionStrings`, so
-`mongodb://inventory-db/inventory` is a database rather than an external HTTP service.
+The first tier reads a config *block* rather than a single key, because real configuration spreads
+the facts around: `db.default` typically carries the driver class on one line, a URL built from
+`${?DB_HOST}` on the next, and the database name on a third — and Slick pushes the name two levels
+down into `properties.databaseName`. Read key-by-key that is three datastores; read per block it is
+one. A URL that resolves to `jdbc:postgresql://:5432/` is still parsed, because the engine in it is
+certain even when nothing else is, and an unresolved `${...}` is never treated as a name.
+
+The middle tier exists because the services with the most disciplined configuration would otherwise
+be the ones drawn with no database at all. Migrations attach to the connection the service already
+configured when there is exactly one relational candidate, so a service with both a JDBC URL and a
+migration folder has one database rather than two. The driver tier is emitted **only** when the
+first two found nothing, so a service is never shown with both a real database and a vague one; and
+`ConfigReferenceScanner` defers to `ConnectionStrings`, so `mongodb://inventory-db/inventory` is a
+database rather than an external HTTP service.
 
 Local development stores — embedded H2, anything on `localhost` — are dropped. They are not
-architecture.
+architecture. Datastores can also be hidden wholesale from the filter panel, for the readings of a
+diagram that are about services talking to each other.
 
 ### 3.9 A Pub/Sub subscription is not a topic (FR-3.10)
 
@@ -187,14 +201,31 @@ Google Pub/Sub flows are drawn through the same `TOPIC` node as Kafka and Rabbit
 broker, because a reader wants "`order-events-v2` sits between these services" regardless of the
 technology carrying it.
 
-The awkward part is direction. A subscription is a named cursor onto a topic, and consuming services
-declare the *topic* name in their config too — so reading every `topic` key as a publish inverts half
-the diagram. The rule: a `topic` key with a sibling `subscription` key is naming what that
-subscription reads, not something this service publishes, and is skipped. That pairing also resolves
-source-level references, where `ProjectSubscriptionName.of(project, "order-events-inventory-sub")`
-names only the subscription; the config knows which topic it reads, which keeps one node per topic
-instead of one per subscriber. When no pairing is available the subscription becomes its own node —
-honest about a real flow rather than inventing a link to a topic we cannot see.
+**Recognising it.** A `topic` key is only Pub/Sub if something says so, or the same rule would claim
+every Kafka topic in the estate. Three things count: a `projects/…/topics/…` resource path, which is
+self-identifying wherever it appears and needs no help from the key name; a Pub/Sub client in
+`libraryDependencies`, which vouches for a bare `topic` key in that repository; and a `pubsub`/`gcp`
+segment in the key path. Requiring the last of those alone was too strict — plenty of configuration
+writes `messaging.orders.topic` — and silently produced no Pub/Sub at all.
+
+**Direction.** A subscription is a named cursor onto a topic, and consuming services declare the
+*topic* name in their config too, so reading every `topic` key as a publish inverts half the diagram.
+Direction is decided in order: the key path when it says `publisher`/`consumer` outright; then a
+topic with no sibling subscription, which is a publish; then a topic *with* one, which is set aside
+rather than drawn, because it is as likely to be naming what the service reads.
+
+Setting it aside would lose the common case where a service publishes to a topic it also configures a
+subscription for, and names it in code only as `config.getString("…")`. So one inference closes that
+gap: a service that builds a publisher, publishes to nothing else we could name, and has exactly
+*one* set-aside topic, publishes that topic — recorded at LOW confidence with evidence saying why.
+Two set-aside topics stop there, because picking one would be a guess (§3.3).
+
+The topic/subscription pairing also resolves source-level references, where
+`ProjectSubscriptionName.of(project, "order-events-inventory-sub")` names only the subscription; the
+config knows which topic it reads, which keeps one node per topic instead of one per subscriber.
+Names held in a `val` — including a qualified `Topics.Renders` — are followed the same way the HTTP
+scanner follows them. When no pairing is available the subscription becomes its own node — honest
+about a real flow rather than inventing a link to a topic we cannot see.
 
 ## 4. Frontend structure
 

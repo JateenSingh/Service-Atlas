@@ -152,6 +152,37 @@ class GraphExtractionIntegrationTest {
     }
 
     @Test
+    @DisplayName("A database nothing named belongs to its service, not to a shared 'PostgreSQL'")
+    void unnamedDatabasesStayWithTheirService() {
+        GraphNode inferred = node("datastore:postgresql:logpricingsvc");
+        assertThat(inferred.displayName()).isEqualTo("log-pricing-svc db");
+        assertThat(inferred.metadata()).containsEntry("engine", "PostgreSQL");
+
+        assertThat(edge("logpricingsvc", "datastore:postgresql:logpricingsvc", EdgeType.PERSISTENCE))
+                .isPresent();
+        assertThat(graph.nodes()).extracting(GraphNode::displayName)
+                .as("the engine is a subtitle, never a node name")
+                .doesNotContain("PostgreSQL", "MongoDB", "Redis");
+    }
+
+    @Test
+    @DisplayName("A database named by a config key rather than a URL is still a database")
+    void databaseNameKeysAreRead() {
+        GraphNode notifications = node("datastore:mongodb:notifications");
+        assertThat(notifications.metadata()).containsEntry("engine", "MongoDB");
+        assertThat(edge("lognotificationsvc", "datastore:mongodb:notifications", EdgeType.PERSISTENCE))
+                .isPresent();
+    }
+
+    @Test
+    @DisplayName("A Pub/Sub resource path is recognised without a 'pubsub' key to announce it")
+    void resourcePathsAreSelfIdentifying() {
+        GraphNode topic = node("topic:templaterenders");
+        assertThat(topic.metadata()).containsEntry("broker", "Google Pub/Sub");
+        assertThat(edge("lognotificationsvc", "topic:templaterenders", EdgeType.MESSAGING)).isPresent();
+    }
+
+    @Test
     @DisplayName("Non-relational stores are drawn too, each named by what it holds")
     void everyEngineIsRepresented() {
         assertThat(graph.nodes())

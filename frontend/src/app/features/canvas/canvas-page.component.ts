@@ -74,6 +74,10 @@ export class CanvasPageComponent {
     this.graphStore.setShowExternal(!this.graphStore.filters().showExternal);
   }
 
+  toggleDatastores(): void {
+    this.graphStore.setShowDatastores(!this.graphStore.filters().showDatastores);
+  }
+
   setDirection(direction: LayoutDirection): void {
     this.layoutStore.setDirection(direction);
   }
