@@ -27,7 +27,7 @@ export interface GraphFilters {
 }
 
 const DEFAULT_FILTERS: GraphFilters = {
-  edgeTypes: new Set<EdgeType>(['HTTP', 'ARTIFACT', 'MESSAGING', 'UNKNOWN']),
+  edgeTypes: new Set<EdgeType>(['HTTP', 'ARTIFACT', 'MESSAGING', 'PERSISTENCE', 'UNKNOWN']),
   minConfidence: 'LOW',
   showExternal: true,
   search: '',

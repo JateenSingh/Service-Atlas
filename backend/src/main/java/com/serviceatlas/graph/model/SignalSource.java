@@ -17,6 +17,16 @@ public enum SignalSource {
     MESSAGING_PRODUCER(Confidence.MEDIUM, EdgeType.MESSAGING, false),
     /** FR-3.6 — a message consumed from a topic. */
     MESSAGING_CONSUMER(Confidence.MEDIUM, EdgeType.MESSAGING, false),
+    /** A datastore named by a connection URL or equivalent in configuration. */
+    DATASTORE_CONNECTION(Confidence.HIGH, EdgeType.PERSISTENCE, false),
+    /** A datastore this service owns the schema of — it ships migrations or evolutions for it. */
+    DATASTORE_SCHEMA(Confidence.HIGH, EdgeType.PERSISTENCE, false),
+    /** A datastore inferred from a driver dependency, with no connection details to confirm it. */
+    DATASTORE_DRIVER(Confidence.LOW, EdgeType.PERSISTENCE, false),
+    /** Publishes to a Google Pub/Sub topic. */
+    PUBSUB_PUBLISHER(Confidence.MEDIUM, EdgeType.MESSAGING, false),
+    /** Subscribes to a Google Pub/Sub topic. */
+    PUBSUB_SUBSCRIBER(Confidence.MEDIUM, EdgeType.MESSAGING, false),
     /** A user-created edge (FR-4.4). Always HIGH: the user asserted it. */
     MANUAL(Confidence.HIGH, EdgeType.UNKNOWN, false);
 

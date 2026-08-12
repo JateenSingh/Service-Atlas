@@ -117,6 +117,7 @@ public record LucidDocument(int version, List<Page> pages) {
         public static final String RECTANGLE = "rectangle";
         public static final String ROUNDED_RECTANGLE = "roundedRectangle";
         public static final String ELLIPSE = "ellipse";
+        public static final String CYLINDER = "cylinder";
 
         private ShapeTypes() {
         }

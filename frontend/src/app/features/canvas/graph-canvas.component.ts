@@ -313,13 +313,31 @@ export class GraphCanvasComponent {
     this.layoutStore.zoomAt(width / 2, height / 2, 1 / 1.2);
   }
 
+  /** Cap depth of the storage cylinder, capped so a short node still looks like a cylinder. */
+  capHeight(height: number): number {
+    return Math.min(18, height / 3.2);
+  }
+
+  /** The cylinder body: an arc across the top, straight sides, an arc across the bottom. */
+  cylinderPath(width: number, height: number): string {
+    const cap = this.capHeight(height);
+    const rx = width / 2;
+    const ry = cap / 2;
+    return (
+      `M 0 ${round(ry)} a ${round(rx)} ${round(ry)} 0 0 1 ${round(width)} 0 ` +
+      `v ${round(height - cap)} a ${round(rx)} ${round(ry)} 0 0 1 -${round(width)} 0 z`
+    );
+  }
+
   trackNode = (_: number, rendered: RenderedNode) => rendered.node.key;
   trackEdge = (_: number, rendered: RenderedEdge) => rendered.edge.id;
 
   nodeSubtitle(node: GraphNode): string {
     switch (node.type) {
       case 'TOPIC':
-        return 'topic';
+        return String(node.metadata?.['broker'] ?? 'topic');
+      case 'DATASTORE':
+        return String(node.metadata?.['engine'] ?? 'datastore');
       case 'EXTERNAL':
         return 'external';
       case 'SUB_MODULE':
@@ -345,6 +363,9 @@ export function nodeColour(node: GraphNode): string {
   if (node.type === 'TOPIC') {
     return 'var(--fw-topic)';
   }
+  if (node.type === 'DATASTORE') {
+    return 'var(--fw-datastore)';
+  }
   if (node.type === 'EXTERNAL') {
     return 'var(--fw-external)';
   }
@@ -369,6 +390,8 @@ export function edgeDash(type: EdgeType): string | null {
   switch (type) {
     case 'MESSAGING':
       return '8 5';
+    case 'PERSISTENCE':
+      return '10 3';
     case 'ARTIFACT':
       return '2 4';
     case 'UNKNOWN':
@@ -386,6 +409,8 @@ export function edgeColour(type: EdgeType): string {
       return 'var(--edge-artifact)';
     case 'MESSAGING':
       return 'var(--edge-messaging)';
+    case 'PERSISTENCE':
+      return 'var(--edge-persistence)';
     default:
       return 'var(--edge-unknown)';
   }
@@ -409,6 +434,8 @@ export function nodeTypeLabel(type: NodeType): string {
       return 'Module';
     case 'TOPIC':
       return 'Topic';
+    case 'DATASTORE':
+      return 'Datastore';
     case 'EXTERNAL':
       return 'External';
     default:

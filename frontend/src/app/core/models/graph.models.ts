@@ -5,8 +5,8 @@
  * they stop matching what the server actually sends.
  */
 
-export type NodeType = 'SERVICE' | 'SUB_MODULE' | 'TOPIC' | 'EXTERNAL';
-export type EdgeType = 'HTTP' | 'ARTIFACT' | 'MESSAGING' | 'UNKNOWN';
+export type NodeType = 'SERVICE' | 'SUB_MODULE' | 'TOPIC' | 'DATASTORE' | 'EXTERNAL';
+export type EdgeType = 'HTTP' | 'ARTIFACT' | 'MESSAGING' | 'PERSISTENCE' | 'UNKNOWN';
 export type Confidence = 'LOW' | 'MEDIUM' | 'HIGH';
 
 export type SignalSource =
@@ -16,6 +16,11 @@ export type SignalSource =
   | 'SOURCE_IMPORT'
   | 'MESSAGING_PRODUCER'
   | 'MESSAGING_CONSUMER'
+  | 'DATASTORE_CONNECTION'
+  | 'DATASTORE_SCHEMA'
+  | 'DATASTORE_DRIVER'
+  | 'PUBSUB_PUBLISHER'
+  | 'PUBSUB_SUBSCRIBER'
   | 'MANUAL';
 
 export type ScanStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
@@ -205,7 +210,7 @@ export interface ProblemDetail {
   instance?: string;
 }
 
-export const EDGE_TYPES: EdgeType[] = ['HTTP', 'ARTIFACT', 'MESSAGING', 'UNKNOWN'];
+export const EDGE_TYPES: EdgeType[] = ['HTTP', 'ARTIFACT', 'MESSAGING', 'PERSISTENCE', 'UNKNOWN'];
 
 export const CONFIDENCE_ORDER: Confidence[] = ['LOW', 'MEDIUM', 'HIGH'];
 
@@ -221,5 +226,10 @@ export const SIGNAL_SOURCE_LABELS: Record<SignalSource, string> = {
   SOURCE_IMPORT: 'Source import',
   MESSAGING_PRODUCER: 'Produces to topic',
   MESSAGING_CONSUMER: 'Consumes from topic',
+  DATASTORE_CONNECTION: 'Database connection',
+  DATASTORE_SCHEMA: 'Owns the schema',
+  DATASTORE_DRIVER: 'Database driver',
+  PUBSUB_PUBLISHER: 'Publishes to Pub/Sub',
+  PUBSUB_SUBSCRIBER: 'Subscribes on Pub/Sub',
   MANUAL: 'Added by you',
 };

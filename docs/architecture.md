@@ -153,6 +153,49 @@ FR-2.4 says to treat "each module with its own routes/main class as a sub-servic
 promoted to a `SUB_MODULE` node when it has `conf/routes` or a `Main`/`Boot`/`Server` class; a
 library-only module stays invisible, as part of its parent.
 
+### 3.8 Datastores are keyed by engine and database, not by host (FR-3.9)
+
+A datastore node's identity is `engine + database name`. Deliberately *not* the hostname: the same
+database is reached as `orders-db.prod.svc.cluster.local` from one service, through `pgbouncer` from
+another, and from an environment variable in a third. Keying on the host would draw three databases
+and hide the one fact worth drawing — that two services share a store, which is coupling. Where the
+connection string names no database, the host is the fallback identity, which is the most that can
+honestly be said.
+
+Three tiers of evidence feed it, weighted differently on purpose:
+
+| Tier | What it reads | Confidence |
+|---|---|---|
+| Connection string | JDBC / MongoDB / Redis URLs in HOCON | HIGH |
+| Schema ownership | Flyway migrations, Play evolutions | HIGH |
+| Driver dependency | a driver coordinate in `libraryDependencies` | LOW |
+
+The middle tier exists because the services with the most disciplined configuration — URL entirely
+from the environment — would otherwise be the ones drawn with no database at all. Migrations attach
+to the connection the service already configured when there is exactly one relational candidate, so
+a service with both a JDBC URL and a migration folder has one database rather than two. The driver
+tier is emitted **only** when the first two found nothing, so a service is never shown with both a
+real database and a vague one; and `ConfigReferenceScanner` defers to `ConnectionStrings`, so
+`mongodb://inventory-db/inventory` is a database rather than an external HTTP service.
+
+Local development stores — embedded H2, anything on `localhost` — are dropped. They are not
+architecture.
+
+### 3.9 A Pub/Sub subscription is not a topic (FR-3.10)
+
+Google Pub/Sub flows are drawn through the same `TOPIC` node as Kafka and RabbitMQ, tagged with the
+broker, because a reader wants "`order-events-v2` sits between these services" regardless of the
+technology carrying it.
+
+The awkward part is direction. A subscription is a named cursor onto a topic, and consuming services
+declare the *topic* name in their config too — so reading every `topic` key as a publish inverts half
+the diagram. The rule: a `topic` key with a sibling `subscription` key is naming what that
+subscription reads, not something this service publishes, and is skipped. That pairing also resolves
+source-level references, where `ProjectSubscriptionName.of(project, "order-events-inventory-sub")`
+names only the subscription; the config knows which topic it reads, which keeps one node per topic
+instead of one per subscriber. When no pairing is available the subscription becomes its own node —
+honest about a real flow rather than inventing a link to a topic we cannot see.
+
 ## 4. Frontend structure
 
 - **State** is Angular signals throughout — no NgRx (§2). Stores are plain injectable classes

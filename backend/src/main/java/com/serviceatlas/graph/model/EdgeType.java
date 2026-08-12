@@ -8,6 +8,8 @@ public enum EdgeType {
     ARTIFACT,
     /** Produce/consume through a topic or queue. */
     MESSAGING,
+    /** A service reading from or writing to a datastore. */
+    PERSISTENCE,
     /** A relationship we are confident exists but could not classify. */
     UNKNOWN
 }

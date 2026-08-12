@@ -127,7 +127,9 @@ export class CanvasPageComponent {
   nodeKindLabel(node: GraphNode): string {
     switch (node.type) {
       case 'TOPIC':
-        return 'topic';
+        return String(node.metadata?.['broker'] ?? 'topic').toLowerCase();
+      case 'DATASTORE':
+        return String(node.metadata?.['engine'] ?? 'datastore').toLowerCase();
       case 'EXTERNAL':
         return 'external';
       case 'SUB_MODULE':
@@ -144,9 +146,11 @@ function typeRank(node: GraphNode): number {
       return 0;
     case 'SUB_MODULE':
       return 1;
-    case 'TOPIC':
+    case 'DATASTORE':
       return 2;
-    default:
+    case 'TOPIC':
       return 3;
+    default:
+      return 4;
   }
 }

@@ -41,12 +41,14 @@
   --fw-grpc: #fbbf24;
   --fw-unknown: #94a3b8;
   --fw-topic: #f472b6;
+  --fw-datastore: #22d3ee;
   --fw-external: #64748b;
 
   /* Edge colours by type (FR-5.6). */
   --edge-http: #60a5fa;
   --edge-artifact: #a3a3a3;
   --edge-messaging: #f472b6;
+  --edge-persistence: #22d3ee;
   --edge-unknown: #737373;
 }
 
@@ -121,11 +123,13 @@
   --fw-grpc: #b45309;
   --fw-unknown: #64748b;
   --fw-topic: #db2777;
+  --fw-datastore: #0e7490;
   --fw-external: #475569;
 
   --edge-http: #1d6fe0;
   --edge-artifact: #64748b;
   --edge-messaging: #db2777;
+  --edge-persistence: #0e7490;
   --edge-unknown: #94a3b8;
   color-scheme: light;
 }

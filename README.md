@@ -84,11 +84,20 @@ are absent, the API export option is hidden in the UI.
 | Service URL / host / discovery key | `application.conf`, `reference.conf` | HIGH |
 | HTTP client call | `ws.url`, `WSClient`, sttp, http4s, Akka/Pekko HTTP clients | MEDIUM |
 | Kafka / RabbitMQ produce & consume | config and client APIs, via a topic node | MEDIUM |
+| Google Pub/Sub publish & subscribe | `pubsub.*` config, `TopicName.of`, `Subscriber`, Alpakka | MEDIUM |
+| Database / cache connection | JDBC, MongoDB and Redis connection strings in config | HIGH |
+| Schema ownership | Flyway migrations, Play evolutions | HIGH |
+| Database driver on the classpath | `org.postgresql:postgresql`, `io.lettuce:lettuce-core`, … | LOW |
 | Cross-service package import | `import com.company.logusersvc._` | LOW |
 | Exposed endpoints | Play `conf/routes` | informational |
 
 Every edge carries the file and line it came from, and you can filter the whole view by confidence
 if you only want to see what is certain.
+
+Datastores are drawn as cylinders and keyed by **engine + database name**, not by hostname, so two
+services reaching one database through different hosts converge on a single node — a shared database
+is coupling, and the diagram should say so. Google Pub/Sub flows use the same topic node as Kafka,
+tagged with the broker, so a topic reads as "this sits between these services" whatever carries it.
 
 Name matching is spelling-insensitive: `log-quote-svc`, `logQuoteSvc` and `LOG_QUOTE_SVC` are the
 same service, and the client artifact `log-quote-svc-client` resolves to it. Ambiguous matches
@@ -111,8 +120,8 @@ The end-to-end suite starts `backend/build/libs/service-atlas.jar`, so build it 
 `PLAYWRIGHT_CHROMIUM_PATH=/path/to/chrome`; otherwise run `npx playwright install chromium` once.
 
 `e2e/fixtures/` holds a set of realistic Scala/SBT services (Play, Akka HTTP, http4s, gRPC, a
-multi-module build) wired together through build dependencies, config URLs, HTTP client calls and a
-Kafka topic. Both the backend integration tests and the Playwright E2E scan it.
+multi-module build) wired together through build dependencies, config URLs, HTTP client calls, Kafka
+and Pub/Sub topics, Postgres/Mongo/Redis/BigQuery connections and Flyway migrations. Both the backend integration tests and the Playwright E2E scan it.
 
 ### Layout
 

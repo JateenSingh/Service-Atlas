@@ -46,7 +46,7 @@
     </button>
 
     <div class="toolbar-stats mono">
-      {{ graphStore.visibleNodeCount() }} services · {{ graphStore.visibleEdgeCount() }} dependencies
+      {{ graphStore.visibleNodeCount() }} nodes · {{ graphStore.visibleEdgeCount() }} dependencies
       @if (graphStore.hiddenNodeCount() > 0 || graphStore.hiddenEdgeCount() > 0) {
         <span class="muted">
           ({{ graphStore.hiddenNodeCount() }}/{{ graphStore.hiddenEdgeCount() }} hidden)

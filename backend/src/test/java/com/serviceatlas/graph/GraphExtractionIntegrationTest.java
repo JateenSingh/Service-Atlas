@@ -120,6 +120,84 @@ class GraphExtractionIntegrationTest {
     }
 
     @Test
+    @DisplayName("FR-3.9: a configured database becomes a DATASTORE node behind a PERSISTENCE edge")
+    void datastoresBecomeTheirOwnNodes() {
+        GraphNode orders = node("datastore:postgresql:orders");
+        assertThat(orders.type()).isEqualTo(NodeType.DATASTORE);
+        assertThat(orders.displayName()).isEqualTo("orders");
+        assertThat(orders.metadata()).containsEntry("engine", "PostgreSQL")
+                .containsEntry("host", "orders-db.logistics");
+
+        assertThat(edge("logordersvc", "datastore:postgresql:orders", EdgeType.PERSISTENCE))
+                .isPresent()
+                .hasValueSatisfying(edge -> {
+                    assertThat(edge.confidence()).isEqualTo(Confidence.HIGH);
+                    assertThat(edge.label()).isEqualTo("PostgreSQL");
+                    assertThat(sourcesOf(edge))
+                            .contains(SignalSource.DATASTORE_CONNECTION, SignalSource.DATASTORE_SCHEMA);
+                });
+    }
+
+    @Test
+    @DisplayName("A cache both services configure is one node, so the coupling is visible")
+    void sharedDatastoresAreDrawnOnce() {
+        assertThat(graph.nodes())
+                .filteredOn(node -> node.type() == NodeType.DATASTORE
+                        && "Redis".equals(node.metadata().get("engine")))
+                .hasSize(1);
+
+        String cache = "datastore:redis:pricingcachelogistics";
+        assertThat(edge("logordersvc", cache, EdgeType.PERSISTENCE)).isPresent();
+        assertThat(edge("logquotesvc", cache, EdgeType.PERSISTENCE)).isPresent();
+    }
+
+    @Test
+    @DisplayName("Non-relational stores are drawn too, each named by what it holds")
+    void everyEngineIsRepresented() {
+        assertThat(graph.nodes())
+                .filteredOn(node -> node.type() == NodeType.DATASTORE)
+                .extracting(GraphNode::displayName)
+                .contains("orders", "quotes", "inventory", "audit", "pricing-cache.logistics");
+    }
+
+    @Test
+    @DisplayName("An embedded or localhost database is development detail, not architecture")
+    void localOnlyStoresAreNotDrawn() {
+        assertThat(graph.nodes())
+                .filteredOn(node -> node.type() == NodeType.DATASTORE)
+                .allSatisfy(node -> assertThat(node.metadata()).doesNotContainKey("localOnly"));
+    }
+
+    @Test
+    @DisplayName("FR-3.10: Pub/Sub publishers and subscribers meet at one topic node")
+    void pubSubFlowsThroughATopicNode() {
+        GraphNode topic = node("topic:ordereventsv2");
+        assertThat(topic.type()).isEqualTo(NodeType.TOPIC);
+        assertThat(topic.metadata()).containsEntry("broker", "Google Pub/Sub");
+
+        assertThat(edge("logordersvc", "topic:ordereventsv2", EdgeType.MESSAGING)).isPresent()
+                .hasValueSatisfying(edge ->
+                        assertThat(sourcesOf(edge)).contains(SignalSource.PUBSUB_PUBLISHER));
+        assertThat(edge("topic:ordereventsv2", "loginventorysvc", EdgeType.MESSAGING)).isPresent();
+        assertThat(edge("topic:ordereventsv2", "logauditsvc", EdgeType.MESSAGING)).isPresent();
+    }
+
+    @Test
+    @DisplayName("A consumer's copy of the topic name does not reverse the arrow")
+    void subscribersDoNotPublish() {
+        assertThat(edge("loginventorysvc", "topic:ordereventsv2", EdgeType.MESSAGING))
+                .as("log-inventory-svc only subscribes").isEmpty();
+        assertThat(edge("logauditsvc", "topic:ordereventsv2", EdgeType.MESSAGING))
+                .as("log-audit-svc only subscribes").isEmpty();
+    }
+
+    @Test
+    @DisplayName("A subscription is not a node; the topic it reads is")
+    void subscriptionsAreNotTopics() {
+        assertThat(keys()).noneMatch(key -> key.contains("sub") && key.startsWith("topic:"));
+    }
+
+    @Test
     @DisplayName("FR-4.1: services referenced but not cloned become EXTERNAL nodes")
     void unclonedServicesBecomeExternalNodes() {
         assertThat(graph.nodes())

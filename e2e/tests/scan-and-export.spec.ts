@@ -49,12 +49,13 @@ test.describe('scan the fixture estate and export it', () => {
     const nodes = page.locator('g.node');
     const edges = page.locator('g.edge');
 
-    // Nine repositories, one deployable sub-module, two topics and three external services.
-    await expect(nodes).toHaveCount(15);
-    await expect(edges).toHaveCount(21);
+    // Nine repositories, one deployable sub-module, three topics, three external services and
+    // six datastores.
+    await expect(nodes).toHaveCount(23);
+    await expect(edges).toHaveCount(32);
 
-    await expect(page.locator('.toolbar-stats')).toContainText('15 services');
-    await expect(page.locator('.toolbar-stats')).toContainText('21 dependencies');
+    await expect(page.locator('.toolbar-stats')).toContainText('23 nodes');
+    await expect(page.locator('.toolbar-stats')).toContainText('32 dependencies');
 
     // Every signal source in FR-3 is represented on the canvas.
     const graph = await page.evaluate(async () => {
@@ -62,10 +63,21 @@ test.describe('scan the fixture estate and export it', () => {
       return (await fetch(`/api/v1/workspaces/${workspaces[0].id}/graph`)).json();
     });
     const edgeTypes = new Set(graph.graph.edges.map((edge: { type: string }) => edge.type));
-    expect([...edgeTypes].sort()).toEqual(['ARTIFACT', 'HTTP', 'MESSAGING']);
+    expect([...edgeTypes].sort()).toEqual(['ARTIFACT', 'HTTP', 'MESSAGING', 'PERSISTENCE']);
     expect(graph.graph.nodes.some((node: { type: string }) => node.type === 'TOPIC')).toBe(true);
     expect(graph.graph.nodes.some((node: { type: string }) => node.type === 'EXTERNAL')).toBe(true);
     expect(graph.graph.nodes.some((node: { type: string }) => node.type === 'SUB_MODULE')).toBe(true);
+    expect(graph.graph.nodes.some((node: { type: string }) => node.type === 'DATASTORE')).toBe(true);
+
+    // A shared datastore is drawn once, with an edge from each service that uses it (FR-3.9).
+    const cache = graph.graph.nodes.find(
+      (node: { type: string; displayName: string }) =>
+        node.type === 'DATASTORE' && node.displayName.startsWith('pricing-cache'),
+    );
+    expect(cache).toBeTruthy();
+    expect(
+      graph.graph.edges.filter((edge: { targetKey: string }) => edge.targetKey === cache.key),
+    ).toHaveLength(2);
 
     // ---------------------------------------------------------------- inspector (FR-5.3, FR-5.4)
     await page.locator('g.node', { hasText: 'log-order-svc' }).first().click();
@@ -85,10 +97,10 @@ test.describe('scan the fixture estate and export it', () => {
     await page.locator('.chip', { hasText: 'HIGH' }).click();
     await page.waitForTimeout(1_200);
     const highOnly = await edges.count();
-    expect(highOnly).toBeLessThan(21);
+    expect(highOnly).toBeLessThan(32);
     await page.getByRole('button', { name: 'Reset filters' }).click();
     await page.waitForTimeout(1_200);
-    await expect(edges).toHaveCount(21);
+    await expect(edges).toHaveCount(32);
 
     // ---------------------------------------------------------------- export (FR-6.1)
     await page.getByRole('button', { name: 'Export' }).click();
@@ -121,8 +133,8 @@ test.describe('scan the fixture estate and export it', () => {
     expect(document.pages).toHaveLength(1);
 
     const page1 = document.pages[0];
-    expect(page1.shapes.length).toBeGreaterThanOrEqual(15);
-    expect(page1.lines).toHaveLength(21);
+    expect(page1.shapes.length).toBeGreaterThanOrEqual(23);
+    expect(page1.lines).toHaveLength(32);
 
     // Shapes carry position, style and text; lines attach to real shapes at both ends.
     const shapeIds = new Set(page1.shapes.map((shape: { id: string }) => shape.id));
@@ -146,7 +158,14 @@ test.describe('scan the fixture estate and export it', () => {
 
     // The estate's services are actually in the document, not just the right number of boxes.
     const allText = page1.shapes.map((shape: { text?: string }) => shape.text ?? '').join('|');
-    for (const service of ['log-order-svc', 'log-quote-svc', 'order-events', 'api.stripe.com']) {
+    for (const service of [
+      'log-order-svc',
+      'log-quote-svc',
+      'order-events',
+      'api.stripe.com',
+      'orders',
+      'order-events-v2',
+    ]) {
       expect(allText).toContain(service);
     }
 

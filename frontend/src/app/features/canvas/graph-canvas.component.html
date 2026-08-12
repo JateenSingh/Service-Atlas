@@ -17,7 +17,7 @@
       </pattern>
 
       <!-- One marker per edge type so arrowheads match their line colour. -->
-      @for (marker of ['http', 'artifact', 'messaging', 'unknown']; track marker) {
+      @for (marker of ['http', 'artifact', 'messaging', 'persistence', 'unknown']; track marker) {
         <marker
           [attr.id]="'sa-arrow-' + marker"
           viewBox="0 0 10 10"
@@ -76,6 +76,7 @@
             [class.focused]="rendered.focused"
             [class.external]="rendered.node.type === 'EXTERNAL'"
             [class.topic]="rendered.node.type === 'TOPIC'"
+            [class.datastore]="rendered.node.type === 'DATASTORE'"
             [class.module]="rendered.node.type === 'SUB_MODULE'"
             tabindex="0"
             role="button"
@@ -84,14 +85,26 @@
             (dblclick)="onNodeDoubleClick(rendered.node, $event)"
             (keydown.enter)="onNodeClick(rendered.node, $event)"
           >
-            <rect
-              class="node-body"
-              [attr.width]="rendered.width"
-              [attr.height]="rendered.height"
-              [attr.rx]="rendered.node.type === 'TOPIC' ? rendered.height / 2 : 10"
-            />
+            @if (rendered.node.type === 'DATASTORE') {
+              <!-- The storage cylinder every architecture diagram uses: body plus an ellipse cap. -->
+              <path class="node-body" [attr.d]="cylinderPath(rendered.width, rendered.height)" />
+              <ellipse
+                class="node-body node-cap"
+                [attr.cx]="rendered.width / 2"
+                [attr.cy]="capHeight(rendered.height) / 2"
+                [attr.rx]="rendered.width / 2"
+                [attr.ry]="capHeight(rendered.height) / 2"
+              />
+            } @else {
+              <rect
+                class="node-body"
+                [attr.width]="rendered.width"
+                [attr.height]="rendered.height"
+                [attr.rx]="rendered.node.type === 'TOPIC' ? rendered.height / 2 : 10"
+              />
+            }
             <!-- Colour bar rather than a coloured fill: the label stays readable in both themes. -->
-            @if (rendered.node.type !== 'TOPIC') {
+            @if (rendered.node.type !== 'TOPIC' && rendered.node.type !== 'DATASTORE') {
               <rect
                 class="node-accent"
                 width="4"
@@ -101,11 +114,20 @@
                 [attr.fill]="rendered.colour"
               />
             }
-            <text class="node-name" x="16" [attr.y]="rendered.node.type === 'TOPIC' ? 27 : 27">
+            <text
+              class="node-name"
+              [attr.x]="rendered.node.type === 'DATASTORE' ? 14 : 16"
+              [attr.y]="rendered.node.type === 'DATASTORE' ? capHeight(rendered.height) + 20 : 27"
+            >
               {{ rendered.node.displayName }}
             </text>
             @if (rendered.node.type !== 'TOPIC') {
-              <text class="node-meta" x="16" y="45" [attr.fill]="rendered.colour">
+              <text
+                class="node-meta"
+                [attr.x]="rendered.node.type === 'DATASTORE' ? 14 : 16"
+                [attr.y]="rendered.node.type === 'DATASTORE' ? capHeight(rendered.height) + 34 : 45"
+                [attr.fill]="rendered.colour"
+              >
                 {{ nodeSubtitle(rendered.node) }}
               </text>
             }

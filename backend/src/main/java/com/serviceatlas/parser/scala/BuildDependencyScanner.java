@@ -36,6 +36,7 @@ public final class BuildDependencyScanner implements ScalaSignalScanner {
                     context.nodeKey(),
                     dependency.artifactWithoutScalaSuffix(),
                     null,
+                    null,
                     SignalSource.BUILD_DEPENDENCY,
                     SignalSource.BUILD_DEPENDENCY.defaultEdgeType(),
                     SignalSource.BUILD_DEPENDENCY.defaultConfidence(),
