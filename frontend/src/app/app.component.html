@@ -1,0 +1,69 @@
+<div class="shell">
+  <header class="app-bar">
+    <button class="brand" type="button" (click)="showWorkspaces()" title="Workspaces">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <circle cx="4" cy="4" r="2.4" fill="currentColor" />
+          <circle cx="14" cy="9" r="2.4" fill="currentColor" />
+          <circle cx="4" cy="14" r="2.4" fill="currentColor" />
+          <path d="M6 5.2 11.8 8M6 12.8 11.8 10" stroke="currentColor" stroke-width="1.3" />
+        </svg>
+      </span>
+      <span class="brand-name">Service Atlas</span>
+    </button>
+
+    @if (workspaceStore.selected(); as workspace) {
+      <nav class="screens" aria-label="Screens">
+        <button
+          class="screen-tab"
+          type="button"
+          [class.active]="screen() === 'workspaces'"
+          (click)="showWorkspaces()"
+        >
+          Workspace
+        </button>
+        <button
+          class="screen-tab"
+          type="button"
+          [class.active]="screen() === 'canvas'"
+          [disabled]="!canOpenCanvas()"
+          (click)="showCanvas()"
+        >
+          Diagram
+        </button>
+      </nav>
+
+      <span class="current-workspace mono muted">{{ workspace.name }}</span>
+    }
+
+    <div class="app-bar-spacer"></div>
+
+    @if (screen() === 'canvas') {
+      <button class="btn btn-primary" type="button" (click)="openExport()">Export</button>
+    }
+
+    <button
+      class="btn btn-ghost btn-icon"
+      type="button"
+      (click)="toggleTheme()"
+      [title]="currentTheme() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+      [attr.aria-label]="currentTheme() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+    >
+      {{ currentTheme() === 'dark' ? '☀' : '☾' }}
+    </button>
+  </header>
+
+  <main class="app-body">
+    @if (screen() === 'canvas') {
+      <sa-canvas-page />
+    } @else {
+      <div class="workspace-screen scroll">
+        <sa-workspace-panel />
+      </div>
+    }
+  </main>
+
+  @if (exportOpen()) {
+    <sa-export-dialog (closed)="closeExport()" />
+  }
+</div>

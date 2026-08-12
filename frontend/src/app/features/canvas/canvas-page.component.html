@@ -1,0 +1,167 @@
+<div class="canvas-layout" [class.sidebar-collapsed]="sidebarCollapsed()">
+  <!-- ---------------------------------------------------------------- toolbar -->
+  <div class="toolbar">
+    <button
+      class="btn btn-ghost btn-icon"
+      type="button"
+      (click)="toggleSidebar()"
+      [attr.aria-label]="sidebarCollapsed() ? 'Show service list' : 'Hide service list'"
+      title="Toggle service list"
+    >
+      ☰
+    </button>
+
+    <div class="toolbar-group" role="group" aria-label="Layout direction">
+      <button
+        class="segment"
+        type="button"
+        [class.active]="layoutStore.direction() === 'RIGHT'"
+        (click)="setDirection('RIGHT')"
+        title="Left to right"
+      >
+        Left → right
+      </button>
+      <button
+        class="segment"
+        type="button"
+        [class.active]="layoutStore.direction() === 'DOWN'"
+        (click)="setDirection('DOWN')"
+        title="Top down"
+      >
+        Top ↓ down
+      </button>
+    </div>
+
+    <button
+      class="btn"
+      type="button"
+      (click)="toggleFilters()"
+      [class.has-filters]="graphStore.filtersActive()"
+      [attr.aria-expanded]="filtersOpen()"
+    >
+      Filters
+      @if (graphStore.filtersActive()) {
+        <span class="filter-dot" aria-hidden="true"></span>
+      }
+    </button>
+
+    <div class="toolbar-stats mono">
+      {{ graphStore.visibleNodeCount() }} services · {{ graphStore.visibleEdgeCount() }} dependencies
+      @if (graphStore.hiddenNodeCount() > 0 || graphStore.hiddenEdgeCount() > 0) {
+        <span class="muted">
+          ({{ graphStore.hiddenNodeCount() }}/{{ graphStore.hiddenEdgeCount() }} hidden)
+        </span>
+      }
+    </div>
+
+    <div class="toolbar-spacer"></div>
+
+    <button class="btn" type="button" (click)="rescan()" [disabled]="workspaceStore.scanning()">
+      {{ workspaceStore.scanning() ? 'Scanning…' : 'Re-scan' }}
+    </button>
+    <ng-content select="[toolbarEnd]"></ng-content>
+  </div>
+
+  @if (filtersOpen()) {
+    <!-- FR-5.5: filter by edge type, confidence, external visibility. -->
+    <div class="filters" role="region" aria-label="Filters">
+      <div class="filter-group">
+        <span class="filter-label">Dependency type</span>
+        <div class="chips">
+          @for (type of edgeTypes; track type) {
+            <button
+              class="chip"
+              type="button"
+              [class.on]="isEdgeTypeOn(type)"
+              [attr.data-type]="type"
+              (click)="toggleEdgeType(type)"
+              [attr.aria-pressed]="isEdgeTypeOn(type)"
+            >
+              <span class="chip-swatch" aria-hidden="true"></span>
+              {{ type }}
+            </button>
+          }
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <span class="filter-label">Minimum confidence</span>
+        <div class="chips">
+          @for (confidence of confidences; track confidence) {
+            <button
+              class="chip"
+              type="button"
+              [class.on]="graphStore.filters().minConfidence === confidence"
+              (click)="setConfidence(confidence)"
+              [attr.aria-pressed]="graphStore.filters().minConfidence === confidence"
+            >
+              {{ confidence }}
+            </button>
+          }
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <span class="filter-label">External services</span>
+        <button
+          class="chip"
+          type="button"
+          [class.on]="graphStore.filters().showExternal"
+          (click)="toggleExternal()"
+          [attr.aria-pressed]="graphStore.filters().showExternal"
+        >
+          {{ graphStore.filters().showExternal ? 'Shown' : 'Hidden' }}
+        </button>
+      </div>
+
+      <button class="btn btn-ghost" type="button" (click)="resetFilters()">Reset filters</button>
+    </div>
+  }
+
+  <!-- ---------------------------------------------------------------- sidebar -->
+  <aside class="sidebar" [attr.aria-hidden]="sidebarCollapsed()">
+    <div class="search">
+      <input
+        #searchInput
+        class="input"
+        type="search"
+        placeholder="Search services  ( / )"
+        aria-label="Search services"
+        [value]="searchValue()"
+        (input)="onSearch($any($event.target).value)"
+      />
+    </div>
+
+    <ul class="service-list scroll">
+      @for (node of listedNodes(); track node.key) {
+        <li>
+          <button
+            type="button"
+            class="service"
+            [class.selected]="selectedKey() === node.key"
+            [attr.data-type]="node.type"
+            (click)="selectFromList(node)"
+          >
+            <span class="service-name">{{ node.displayName }}</span>
+            <span class="service-meta">{{ nodeKindLabel(node) }}</span>
+            @if (node.warnings.length > 0) {
+              <span class="service-warning" title="Parse warning">!</span>
+            }
+          </button>
+        </li>
+      } @empty {
+        <li class="empty-list muted">No services match.</li>
+      }
+    </ul>
+  </aside>
+
+  <!-- ---------------------------------------------------------------- canvas -->
+  <main class="canvas-area">
+    <sa-graph-canvas />
+  </main>
+
+  <!-- ---------------------------------------------------------------- inspector -->
+  <aside class="inspector">
+    <sa-inspector-panel />
+  </aside>
+</div>

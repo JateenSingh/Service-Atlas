@@ -1,0 +1,136 @@
+:host {
+  display: block;
+}
+
+.scan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+
+.scan-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.scan-head h3 {
+  font-size: var(--text-base);
+}
+
+.scan-head p {
+  margin-top: 2px;
+  font-size: var(--text-xs);
+}
+
+.failed {
+  color: var(--warning);
+}
+
+.percent {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.bar {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--bg-inset);
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 200ms ease-out;
+}
+
+.bar-fill.done {
+  background: var(--success);
+}
+
+.scan-message {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.repo-list {
+  max-height: 15rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.repo-list li {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+}
+
+.repo-list li:hover {
+  background: var(--bg-hover);
+}
+
+.repo-status {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+
+li[data-status='PARSING'] .repo-status {
+  background: var(--accent);
+  animation: pulse 1.1s ease-in-out infinite;
+}
+
+li[data-status='DONE'] .repo-status,
+li[data-status='UNCHANGED'] .repo-status {
+  background: var(--success);
+}
+
+li[data-status='FAILED'] .repo-status {
+  background: var(--danger);
+}
+
+.repo-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.repo-meta {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.repo-error {
+  grid-column: 2 / -1;
+  color: var(--danger);
+  font-size: 11px;
+  word-break: break-word;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
