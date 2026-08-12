@@ -41,6 +41,7 @@ export class CanvasPageComponent {
 
   readonly sidebarCollapsed = signal(false);
   readonly filtersOpen = signal(false);
+  readonly conflictsVisible = signal(true);
 
   /** The service list mirrors the filtered view, so what is listed is what is drawn. */
   readonly listedNodes = computed(() =>
@@ -111,9 +112,14 @@ export class CanvasPageComponent {
     this.filtersOpen.update((open) => !open);
   }
 
+  dismissConflicts(): void {
+    this.conflictsVisible.set(false);
+  }
+
   async rescan(): Promise<void> {
     const workspace = this.workspaceStore.selected();
     if (workspace) {
+      this.conflictsVisible.set(true);
       await this.workspaceStore.startScan(workspace.id);
     }
   }

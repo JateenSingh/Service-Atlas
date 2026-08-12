@@ -7,6 +7,10 @@ import {
   EdgeType,
   GraphEdge,
   GraphNode,
+  GraphResponse,
+  NodeType,
+  OverlayConflict,
+  OverlayPatch,
   confidenceRank,
 } from '../models/graph.models';
 
@@ -48,6 +52,9 @@ export class GraphStore {
   private readonly filtersSignal = signal<GraphFilters>({ ...DEFAULT_FILTERS });
   private readonly selectionSignal = signal<Selection>({ kind: 'none' });
   private readonly focusKeySignal = signal<string | null>(null);
+  private readonly conflictsSignal = signal<OverlayConflict[]>([]);
+  private readonly pinnedSignal = signal<Record<string, { x: number; y: number }>>({});
+  private readonly workspaceIdSignal = signal<number | null>(null);
 
   readonly graph = this.graphSignal.asReadonly();
   readonly scanId = this.scanIdSignal.asReadonly();
@@ -57,6 +64,10 @@ export class GraphStore {
   readonly selection = this.selectionSignal.asReadonly();
   /** Double-click focus: this node and its direct neighbours stay lit, the rest fades (FR-5.3). */
   readonly focusKey = this.focusKeySignal.asReadonly();
+  /** Overlay/parser disagreements the user should see rather than have silently resolved (FR-4.4). */
+  readonly conflicts = this.conflictsSignal.asReadonly();
+  /** Positions the user has pinned by dragging, as last stored by the backend (FR-5.3). */
+  readonly pinnedPositions = this.pinnedSignal.asReadonly();
 
   readonly isEmpty = computed(() => this.graphSignal().nodes.length === 0);
 
@@ -155,10 +166,9 @@ export class GraphStore {
   async load(workspaceId: number): Promise<void> {
     this.loadingSignal.set(true);
     this.errorSignal.set(null);
+    this.workspaceIdSignal.set(workspaceId);
     try {
-      const response = await firstValueFrom(this.api.getGraph(workspaceId));
-      this.graphSignal.set(response.graph);
-      this.scanIdSignal.set(response.scanId);
+      this.accept(await firstValueFrom(this.api.getGraph(workspaceId)));
       this.clearSelection();
     } catch (problem) {
       this.errorSignal.set(problemMessage(problem));
@@ -168,9 +178,80 @@ export class GraphStore {
     }
   }
 
+  /** Adopts a server response — the one place graph, positions and conflicts are set together. */
+  private accept(response: GraphResponse): void {
+    this.graphSignal.set(response.graph);
+    this.scanIdSignal.set(response.scanId);
+    this.pinnedSignal.set(response.positions ?? {});
+    this.conflictsSignal.set(response.conflicts ?? []);
+  }
+
+  /**
+   * Sends an overlay patch and adopts the merged graph the server returns (FR-4.4).
+   *
+   * <p>The server's merge is authoritative rather than optimistic: a manual edge can turn out to
+   * duplicate one the scanner already found, and only the backend knows that.
+   */
+  private async applyPatch(patch: OverlayPatch): Promise<void> {
+    const workspaceId = this.workspaceIdSignal();
+    if (workspaceId === null) {
+      return;
+    }
+    this.errorSignal.set(null);
+    try {
+      this.accept(await firstValueFrom(this.api.patchOverlay(workspaceId, patch)));
+    } catch (problem) {
+      this.errorSignal.set(problemMessage(problem));
+    }
+  }
+
+  /** FR-5.3 — persists a dragged position so it survives a reload and a re-scan. */
+  async pinPosition(key: string, x: number, y: number): Promise<void> {
+    await this.applyPatch({ positions: { [key]: { x, y } } });
+  }
+
+  async hideNode(key: string): Promise<void> {
+    await this.applyPatch({ hiddenNodes: [key] });
+    this.clearSelection();
+  }
+
+  async unhideNode(key: string): Promise<void> {
+    await this.applyPatch({ removeHiddenNodes: [key] });
+  }
+
+  async hideEdge(id: string): Promise<void> {
+    await this.applyPatch({ hiddenEdges: [id] });
+    this.clearSelection();
+  }
+
+  async unhideEdge(id: string): Promise<void> {
+    await this.applyPatch({ removeHiddenEdges: [id] });
+  }
+
+  async addEdge(sourceKey: string, targetKey: string, type: EdgeType, label?: string): Promise<void> {
+    await this.applyPatch({ addedEdgeRequests: [{ sourceKey, targetKey, type, label }] });
+  }
+
+  async addNode(key: string, displayName: string, type: NodeType, note?: string): Promise<void> {
+    await this.applyPatch({ addedNodes: [{ key, displayName, type, note }] });
+  }
+
+  async annotateNode(key: string, note: string): Promise<void> {
+    await this.applyPatch(
+      note.trim() ? { nodeNotes: { [key]: note.trim() } } : { removeNodeNotes: [key] },
+    );
+  }
+
+  /** Drops every manual edit and layout override for this workspace. */
+  async clearOverlay(): Promise<void> {
+    await this.applyPatch({ clear: true });
+  }
+
   reset(): void {
     this.graphSignal.set({ nodes: [], edges: [] });
     this.scanIdSignal.set(null);
+    this.conflictsSignal.set([]);
+    this.pinnedSignal.set({});
     this.clearSelection();
     this.filtersSignal.set({ ...DEFAULT_FILTERS, edgeTypes: new Set(DEFAULT_FILTERS.edgeTypes) });
   }

@@ -30,10 +30,16 @@ public class ScanController {
         this.progress = progress;
     }
 
-    /** Triggers an asynchronous scan and returns immediately with the new scan id (FR-7.1). */
+    /**
+     * Triggers an asynchronous scan and returns immediately with the new scan id (FR-7.1).
+     *
+     * @param force re-parse everything instead of reusing unchanged repositories (FR-7.3)
+     */
     @PostMapping
-    public ResponseEntity<ScanSummary> start(@PathVariable Long workspaceId) {
-        ScanEntity scan = scans.startScan(workspaceId);
+    public ResponseEntity<ScanSummary> start(
+            @PathVariable Long workspaceId,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "false") boolean force) {
+        ScanEntity scan = scans.startScan(workspaceId, force);
         return ResponseEntity
                 .accepted()
                 .location(URI.create("/api/v1/workspaces/" + workspaceId + "/scans/" + scan.getId()))

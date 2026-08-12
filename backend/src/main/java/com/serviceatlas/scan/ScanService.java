@@ -5,6 +5,7 @@ import com.serviceatlas.config.ServiceAtlasProperties;
 import com.serviceatlas.graph.GraphBuilder;
 import com.serviceatlas.graph.GraphStore;
 import com.serviceatlas.graph.model.DependencyGraph;
+import com.serviceatlas.graph.model.GraphEdge;
 import com.serviceatlas.graph.model.GraphNode;
 import com.serviceatlas.graph.model.NodeType;
 import com.serviceatlas.parser.LanguageParser;
@@ -83,8 +84,16 @@ public class ScanService {
      * transaction. {@code save} commits on its own.
      */
     public ScanEntity startScan(Long workspaceId) {
+        return startScan(workspaceId, false);
+    }
+
+    /**
+     * @param force re-parse every repository even if its content hash is unchanged (FR-7.3 escape
+     *              hatch — a full scan is how you recover if a reused result ever looks wrong)
+     */
+    public ScanEntity startScan(Long workspaceId, boolean force) {
         ScanEntity scan = beginScan(workspaceId);
-        self().executeAsync(workspaceId, scan.getId());
+        self().executeAsync(workspaceId, scan.getId(), force);
         return scan;
     }
 
@@ -95,9 +104,13 @@ public class ScanService {
      * not race the worker.
      */
     public ScanEntity scanNow(Long workspaceId) {
+        return scanNow(workspaceId, false);
+    }
+
+    public ScanEntity scanNow(Long workspaceId, boolean force) {
         ScanEntity scan = beginScan(workspaceId);
         try {
-            execute(workspaceId, scan.getId());
+            execute(workspaceId, scan.getId(), force);
         } catch (RuntimeException e) {
             markScanFailed(scan.getId(), e.getMessage());
             throw e;
@@ -136,9 +149,9 @@ public class ScanService {
     }
 
     @Async("scanExecutor")
-    public void executeAsync(Long workspaceId, Long scanId) {
+    public void executeAsync(Long workspaceId, Long scanId, boolean force) {
         try {
-            execute(workspaceId, scanId);
+            execute(workspaceId, scanId, force);
         } catch (RuntimeException e) {
             log.error("Scan {} failed", scanId, e);
             markScanFailed(scanId, e.getMessage());
@@ -149,7 +162,7 @@ public class ScanService {
         }
     }
 
-    void execute(Long workspaceId, Long scanId) {
+    void execute(Long workspaceId, Long scanId, boolean force) {
         WorkspaceEntity workspace = workspaces.get(workspaceId);
         WorkspaceSettings settings = workspaces.settingsOf(workspace);
         Path root = Path.of(workspace.getRootPath());
@@ -166,19 +179,24 @@ public class ScanService {
         }
         progress.publish(scanId, "discovered", Map.of("repoCount", candidates.size()));
 
+        PreviousScan previous = force ? PreviousScan.none() : loadPrevious(workspaceId);
+
         List<ParsedRepo> parsed = new ArrayList<>();
+        List<GraphEdge> reusedEdges = new ArrayList<>();
         int errors = 0;
         for (RepoCandidate candidate : candidates) {
-            RepoOutcome outcome = parseOne(scanId, candidate);
+            RepoOutcome outcome = parseOne(scanId, candidate, previous);
             if (outcome.parsedRepo() != null) {
                 parsed.add(outcome.parsedRepo());
             }
+            reusedEdges.addAll(outcome.reusedEdges());
             if (outcome.failed()) {
                 errors++;
             }
         }
 
         DependencyGraph graph = graphBuilder.build(parsed);
+        graph = graphBuilder.withReusedEdges(graph, reusedEdges);
         graph = graphBuilder.withEndpointLabels(graph);
         graphStore.save(scanId, graph);
 
@@ -199,7 +217,7 @@ public class ScanService {
     }
 
     /** Parses one repository, converting any failure into a warning-badged node (FR-7.2). */
-    private RepoOutcome parseOne(Long scanId, RepoCandidate candidate) {
+    private RepoOutcome parseOne(Long scanId, RepoCandidate candidate, PreviousScan previous) {
         long startedAt = System.currentTimeMillis();
         setRepoStatus(scanId, candidate, RepoScanStatus.PARSING, null, null, null);
         progress.publish(scanId, "repo", Map.of(
@@ -212,6 +230,17 @@ public class ScanService {
             log.debug("Could not fingerprint {}", candidate.relativePath(), e);
         }
 
+        // FR-7.3 — nothing the scanner reads has changed, so the previous result still holds.
+        Optional<RepoOutcome> reused = previous.reuse(candidate, fingerprint);
+        if (reused.isPresent()) {
+            long elapsed = System.currentTimeMillis() - startedAt;
+            setRepoStatus(scanId, candidate, RepoScanStatus.UNCHANGED,
+                    "Unchanged since the previous scan", fingerprint, elapsed);
+            progress.publish(scanId, "repo", Map.of(
+                    "repoPath", candidate.relativePath(), "status", RepoScanStatus.UNCHANGED.name()));
+            return reused.get();
+        }
+
         Optional<LanguageParser> parser = parsers.parserFor(candidate);
         if (parser.isEmpty()) {
             long elapsed = System.currentTimeMillis() - startedAt;
@@ -219,7 +248,7 @@ public class ScanService {
                     "No parser claimed this repository", fingerprint, elapsed);
             progress.publish(scanId, "repo", Map.of(
                     "repoPath", candidate.relativePath(), "status", RepoScanStatus.SKIPPED.name()));
-            return new RepoOutcome(null, false);
+            return RepoOutcome.skipped();
         }
 
         try {
@@ -233,7 +262,7 @@ public class ScanService {
                     "status", RepoScanStatus.DONE.name(),
                     "nodeCount", result.nodes().size(),
                     "signalCount", result.signals().size()));
-            return new RepoOutcome(result, false);
+            return RepoOutcome.parsed(result);
         } catch (RuntimeException e) {
             long elapsed = System.currentTimeMillis() - startedAt;
             log.warn("Failed to parse {}", candidate.relativePath(), e);
@@ -243,7 +272,7 @@ public class ScanService {
                     "repoPath", candidate.relativePath(),
                     "status", RepoScanStatus.FAILED.name(),
                     "message", message));
-            return new RepoOutcome(placeholderFor(candidate, message), true);
+            return RepoOutcome.failed(placeholderFor(candidate, message));
         }
     }
 
@@ -353,7 +382,136 @@ public class ScanService {
         return history;
     }
 
-    private record RepoOutcome(ParsedRepo parsedRepo, boolean failed) {
+    /**
+     * @param parsedRepo  nodes and signals to feed the graph builder, or null when nothing was produced
+     * @param reusedEdges already-resolved edges carried over from the previous scan (FR-7.3)
+     */
+    private record RepoOutcome(ParsedRepo parsedRepo, List<GraphEdge> reusedEdges, boolean failed) {
+
+        static RepoOutcome parsed(ParsedRepo repo) {
+            return new RepoOutcome(repo, List.of(), false);
+        }
+
+        static RepoOutcome failed(ParsedRepo placeholder) {
+            return new RepoOutcome(placeholder, List.of(), true);
+        }
+
+        static RepoOutcome skipped() {
+            return new RepoOutcome(null, List.of(), false);
+        }
+
+        static RepoOutcome reused(ParsedRepo nodesOnly, List<GraphEdge> edges) {
+            return new RepoOutcome(nodesOnly, edges, false);
+        }
+    }
+
+    /**
+     * The previous completed scan, indexed for reuse (FR-7.3).
+     *
+     * <p>A repository is reusable when its content hash is unchanged <em>and</em> the previous scan
+     * actually produced something for it. Reuse carries over both the nodes (so other repositories'
+     * references still resolve to them, via the aliases stored in node metadata) and the edges those
+     * nodes were the source of — already resolved, since re-resolving them would need signals we
+     * deliberately did not recompute.
+     */
+    private record PreviousScan(
+            Map<String, String> hashesByRepoPath,
+            Map<String, List<GraphNode>> nodesByRepoPath,
+            Map<String, List<GraphEdge>> edgesByRepoPath) {
+
+        static PreviousScan none() {
+            return new PreviousScan(Map.of(), Map.of(), Map.of());
+        }
+
+        Optional<RepoOutcome> reuse(RepoCandidate candidate, String fingerprint) {
+            if (fingerprint == null) {
+                return Optional.empty();
+            }
+            String path = candidate.relativePath();
+            if (!fingerprint.equals(hashesByRepoPath.get(path))) {
+                return Optional.empty();
+            }
+            List<GraphNode> nodes = nodesByRepoPath.get(path);
+            if (nodes == null || nodes.isEmpty()) {
+                return Optional.empty();
+            }
+            List<String> aliases = aliasesOf(nodes);
+            ParsedRepo nodesOnly = new ParsedRepo(nodes, List.of(), aliases, List.of());
+            return Optional.of(RepoOutcome.reused(nodesOnly, edgesByRepoPath.getOrDefault(path, List.of())));
+        }
+
+        @SuppressWarnings("unchecked")
+        private static List<String> aliasesOf(List<GraphNode> nodes) {
+            List<String> aliases = new ArrayList<>();
+            for (GraphNode node : nodes) {
+                aliases.add(node.displayName());
+                Object stored = node.metadata().get("aliases");
+                if (stored instanceof List<?> list) {
+                    for (Object alias : list) {
+                        if (alias instanceof String text) {
+                            aliases.add(text);
+                        }
+                    }
+                }
+            }
+            return aliases;
+        }
+    }
+
+    /** Indexes the newest completed scan so unchanged repositories can be carried over. */
+    private PreviousScan loadPrevious(Long workspaceId) {
+        Optional<ScanEntity> previous = latestCompleted(workspaceId);
+        if (previous.isEmpty()) {
+            return PreviousScan.none();
+        }
+        Long previousScanId = previous.get().getId();
+
+        Map<String, String> hashes = new java.util.HashMap<>();
+        for (ScanRepoEntity repo : repoProgress(previousScanId)) {
+            if (repo.getContentHash() != null
+                    && (repo.getStatus() == RepoScanStatus.DONE || repo.getStatus() == RepoScanStatus.UNCHANGED)) {
+                hashes.put(repo.getRepoPath(), repo.getContentHash());
+            }
+        }
+        if (hashes.isEmpty()) {
+            return PreviousScan.none();
+        }
+
+        DependencyGraph graph = graphStore.load(previousScanId);
+        Map<String, List<GraphNode>> nodesByRepo = new java.util.HashMap<>();
+        Map<String, String> repoPathByNodeKey = new java.util.HashMap<>();
+        for (GraphNode node : graph.nodes()) {
+            String repoPath = owningRepoPath(node, hashes.keySet());
+            if (repoPath == null) {
+                continue; // topics and external nodes belong to no repository
+            }
+            nodesByRepo.computeIfAbsent(repoPath, key -> new ArrayList<>()).add(node);
+            repoPathByNodeKey.put(node.key(), repoPath);
+        }
+
+        Map<String, List<GraphEdge>> edgesByRepo = new java.util.HashMap<>();
+        for (GraphEdge edge : graph.edges()) {
+            String repoPath = repoPathByNodeKey.get(edge.sourceKey());
+            if (repoPath != null) {
+                edgesByRepo.computeIfAbsent(repoPath, key -> new ArrayList<>()).add(edge);
+            }
+        }
+        return new PreviousScan(hashes, nodesByRepo, edgesByRepo);
+    }
+
+    /** A node belongs to the repository whose path prefixes its own (services and their modules). */
+    private static String owningRepoPath(GraphNode node, java.util.Set<String> repoPaths) {
+        String path = node.repoPath();
+        if (path == null) {
+            return null;
+        }
+        if (repoPaths.contains(path)) {
+            return path;
+        }
+        return repoPaths.stream()
+                .filter(repoPath -> path.startsWith(repoPath + "/"))
+                .findFirst()
+                .orElse(null);
     }
 
     /**

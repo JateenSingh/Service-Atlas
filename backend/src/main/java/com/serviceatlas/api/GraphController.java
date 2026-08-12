@@ -1,27 +1,35 @@
 package com.serviceatlas.api;
 
 import com.serviceatlas.graph.GraphService;
+import com.serviceatlas.graph.OverlayMerger;
+import com.serviceatlas.graph.OverlayService;
+import com.serviceatlas.graph.OverlaySet;
 import com.serviceatlas.graph.model.DependencyGraph;
+import java.util.List;
+import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Graph read endpoints (§5, FR-4). */
+/** Graph read and overlay endpoints (§5, FR-4). */
 @RestController
 @RequestMapping("/api/v1/workspaces/{workspaceId}")
 public class GraphController {
 
     private final GraphService graphs;
+    private final OverlayService overlays;
 
-    public GraphController(GraphService graphs) {
+    public GraphController(GraphService graphs, OverlayService overlays) {
         this.graphs = graphs;
+        this.overlays = overlays;
     }
 
     @GetMapping("/graph")
     public GraphResponse graph(@PathVariable Long workspaceId) {
-        GraphService.GraphView view = graphs.forWorkspace(workspaceId);
-        return GraphResponse.of(view);
+        return GraphResponse.of(graphs.forWorkspace(workspaceId));
     }
 
     @GetMapping("/scans/{scanId}/graph")
@@ -30,14 +38,37 @@ public class GraphController {
     }
 
     /**
-     * @param scanId    which scan produced this graph, null if the workspace has never been scanned
-     * @param nodeCount convenience counts so the UI can show totals without walking the arrays
+     * FR-4.4, FR-5.3 — applies manual edits and layout overrides, then returns the merged graph so
+     * the caller never has to guess what the edit produced.
      */
-    public record GraphResponse(Long scanId, int nodeCount, int edgeCount, DependencyGraph graph) {
+    @PatchMapping("/graph/overlay")
+    public GraphResponse patchOverlay(
+            @PathVariable Long workspaceId, @RequestBody OverlayService.OverlayPatch patch) {
+        overlays.patch(workspaceId, patch);
+        return GraphResponse.of(graphs.forWorkspace(workspaceId));
+    }
+
+    /**
+     * @param scanId    which scan produced this graph, null if the workspace has never been scanned
+     * @param positions user-pinned node positions
+     * @param conflicts overlay/parser disagreements worth surfacing (FR-4.4)
+     */
+    public record GraphResponse(
+            Long scanId,
+            int nodeCount,
+            int edgeCount,
+            DependencyGraph graph,
+            Map<String, OverlaySet.Position> positions,
+            List<OverlayMerger.Conflict> conflicts) {
 
         static GraphResponse of(GraphService.GraphView view) {
             return new GraphResponse(
-                    view.scanId(), view.graph().nodeCount(), view.graph().edgeCount(), view.graph());
+                    view.scanId(),
+                    view.graph().nodeCount(),
+                    view.graph().edgeCount(),
+                    view.graph(),
+                    view.positions(),
+                    view.conflicts());
         }
     }
 }

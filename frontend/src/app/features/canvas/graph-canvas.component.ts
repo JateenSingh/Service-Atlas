@@ -151,6 +151,11 @@ export class GraphCanvasComponent {
   });
 
   constructor() {
+    // Stored positions are the engine's input, so a re-layout never undoes a drag (FR-5.3).
+    effect(() => {
+      this.layoutStore.setPinned(this.graphStore.pinnedPositions());
+    });
+
     // Re-layout whenever the visible graph or the direction changes (FR-5.8).
     effect(() => {
       const graph = this.graphStore.visibleGraph();
@@ -251,6 +256,12 @@ export class GraphCanvasComponent {
   onPointerUp(event: PointerEvent): void {
     const draggedKey = this.draggingKey();
     if (draggedKey && this.dragMoved) {
+      const position = this.layoutStore.position(draggedKey);
+      if (position) {
+        // Persisted rather than kept in memory: a dragged layout is a decision, and it has to
+        // survive a reload and the next scan (FR-4.4, FR-5.3).
+        void this.graphStore.pinPosition(draggedKey, position.x, position.y);
+      }
       this.nodeMoved.emit(draggedKey);
     }
     this.draggingKey.set(null);

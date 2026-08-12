@@ -2,7 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { FormsModule } from '@angular/forms';
 import { WorkspaceStore } from '../../core/state/workspace.store';
 import { GraphStore } from '../../core/state/graph.store';
-import { problemMessage } from '../../core/api/service-atlas-api.service';
+import { ServiceAtlasApi, problemMessage } from '../../core/api/service-atlas-api.service';
+import { firstValueFrom } from 'rxjs';
 import { RootPathPreview, Workspace } from '../../core/models/graph.models';
 import { ScanProgressComponent } from './scan-progress.component';
 
@@ -24,6 +25,7 @@ import { ScanProgressComponent } from './scan-progress.component';
 export class WorkspacePanelComponent {
   readonly store = inject(WorkspaceStore);
   private readonly graphStore = inject(GraphStore);
+  private readonly api = inject(ServiceAtlasApi);
 
   readonly name = signal('');
   readonly rootPath = signal('');
@@ -118,6 +120,42 @@ export class WorkspacePanelComponent {
 
   toggleAdvanced(): void {
     this.showAdvanced.update((shown) => !shown);
+  }
+
+  // ------------------------------------------------------------------ bundles (FR-1.4)
+
+  readonly importing = signal(false);
+
+  /** Downloads the workspace as a portable .atlas file — graph and edits, never source code. */
+  exportBundle(workspace: Workspace, event: Event): void {
+    event.stopPropagation();
+    const anchor = document.createElement('a');
+    anchor.href = this.api.bundleUrl(workspace.id);
+    anchor.download = '';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  }
+
+  async importBundle(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+    this.importing.set(true);
+    this.formError.set(null);
+    try {
+      const workspace = await firstValueFrom(this.api.importBundle(file));
+      await this.store.load();
+      this.store.select(workspace.id);
+      await this.graphStore.load(workspace.id);
+    } catch (problem) {
+      this.formError.set(problemMessage(problem));
+    } finally {
+      this.importing.set(false);
+      input.value = ''; // so re-picking the same file fires change again
+    }
   }
 
   private settings() {

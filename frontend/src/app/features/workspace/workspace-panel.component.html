@@ -126,9 +126,21 @@
   <section class="workspaces" aria-label="Workspaces">
     <header class="list-head">
       <h2>Workspaces</h2>
-      @if (!showForm()) {
-        <button class="btn btn-primary" type="button" (click)="openForm()">New workspace</button>
-      }
+      <div class="list-actions">
+        <!-- FR-1.4: bundles move a workspace between machines without moving the code. -->
+        <label class="btn" [class.busy]="importing()">
+          {{ importing() ? 'Importing…' : 'Import .atlas' }}
+          <input
+            type="file"
+            accept=".atlas,application/zip,application/octet-stream"
+            class="sr-only"
+            (change)="importBundle($event)"
+          />
+        </label>
+        @if (!showForm()) {
+          <button class="btn btn-primary" type="button" (click)="openForm()">New workspace</button>
+        }
+      </div>
     </header>
 
     <ul class="workspace-list">
@@ -164,6 +176,14 @@
                 (click)="scan(workspace); $event.stopPropagation()"
                 (keydown.enter)="scan(workspace); $event.stopPropagation()"
               >↻</span>
+              <span
+                class="btn btn-ghost btn-icon"
+                role="button"
+                tabindex="0"
+                title="Export as .atlas bundle"
+                (click)="exportBundle(workspace, $event)"
+                (keydown.enter)="exportBundle(workspace, $event)"
+              >⤓</span>
               <span
                 class="btn btn-ghost btn-icon danger"
                 role="button"

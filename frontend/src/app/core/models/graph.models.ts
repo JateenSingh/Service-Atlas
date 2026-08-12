@@ -76,6 +76,54 @@ export interface GraphResponse {
   nodeCount: number;
   edgeCount: number;
   graph: DependencyGraph;
+  /** User-pinned node positions (FR-5.3). */
+  positions: Record<string, { x: number; y: number }>;
+  /** Disagreements between the newest scan and the stored overlay (FR-4.4). */
+  conflicts: OverlayConflict[];
+}
+
+export type ConflictKind =
+  | 'HIDDEN_EDGE_REAPPEARED'
+  | 'MANUAL_EDGE_CONFIRMED'
+  | 'OVERLAY_TARGET_MISSING';
+
+export interface OverlayConflict {
+  kind: ConflictKind;
+  target: string;
+  message: string;
+}
+
+/** Body of PATCH /workspaces/{id}/graph/overlay — every field optional (FR-4.4). */
+export interface OverlayPatch {
+  positions?: Record<string, { x: number; y: number }>;
+  addedNodes?: Array<{ key: string; displayName: string; type: NodeType; note?: string }>;
+  hiddenNodes?: string[];
+  addedEdgeRequests?: Array<{
+    sourceKey: string;
+    targetKey: string;
+    type: EdgeType;
+    label?: string;
+  }>;
+  hiddenEdges?: string[];
+  nodeNotes?: Record<string, string>;
+  edgeNotes?: Record<string, string>;
+  removePositions?: string[];
+  removeAddedNodes?: string[];
+  removeHiddenNodes?: string[];
+  removeAddedEdges?: string[];
+  removeHiddenEdges?: string[];
+  removeNodeNotes?: string[];
+  removeEdgeNotes?: string[];
+  clear?: boolean;
+}
+
+export interface AtlasManifest {
+  version: number;
+  name: string;
+  rootPath: string;
+  exportedAt: string;
+  nodeCount: number;
+  edgeCount: number;
 }
 
 export interface WorkspaceSettings {

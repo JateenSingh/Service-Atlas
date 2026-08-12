@@ -41,10 +41,63 @@
           <dd class="mono">{{ entry.value }}</dd>
         }
       </dl>
-      <button class="btn btn-ghost focus-btn" type="button" (click)="focus(selected.key)">
-        Focus on neighbours
-      </button>
+      <div class="node-actions">
+        <button class="btn btn-ghost" type="button" (click)="focus(selected.key)">
+          Focus on neighbours
+        </button>
+        <button class="btn btn-ghost" type="button" (click)="startEditing()">Edit</button>
+        <button class="btn btn-ghost danger" type="button" (click)="hideNode()">Hide</button>
+      </div>
     </section>
+
+    @if (editing()) {
+      <!-- FR-4.4: manual edits, stored as overlays that survive the next scan. -->
+      <section class="editor">
+        <h4>Your notes and links</h4>
+        <div class="field">
+          <label for="note">Note</label>
+          <input
+            id="note"
+            class="input"
+            type="text"
+            placeholder="Owned by the payments team"
+            [value]="noteDraft()"
+            (input)="noteDraft.set($any($event.target).value)"
+          />
+        </div>
+        <div class="field">
+          <label for="link">Add a dependency the scanner missed</label>
+          <div class="link-row">
+            <select
+              id="link"
+              class="input"
+              [value]="linkTarget()"
+              (change)="linkTarget.set($any($event.target).value)"
+            >
+              <option value="">Choose a service…</option>
+              @for (candidate of linkCandidates(); track candidate.key) {
+                <option [value]="candidate.key">{{ candidate.displayName }}</option>
+              }
+            </select>
+            <select
+              class="input type-select"
+              [value]="linkType()"
+              (change)="linkType.set($any($event.target).value)"
+              aria-label="Dependency type"
+            >
+              @for (type of edgeTypes; track type) {
+                <option [value]="type">{{ type }}</option>
+              }
+            </select>
+            <button class="btn" type="button" (click)="addLink()" [disabled]="!linkTarget()">Add</button>
+          </div>
+        </div>
+        <div class="editor-actions">
+          <button class="btn btn-ghost" type="button" (click)="cancelEditing()">Cancel</button>
+          <button class="btn btn-primary" type="button" (click)="saveNote()">Save note</button>
+        </div>
+      </section>
+    }
 
     @if (selected.endpoints.length > 0) {
       <section>
@@ -142,6 +195,10 @@
       </button>
       <button class="btn btn-ghost" type="button" (click)="select(selected.targetKey)">
         Inspect {{ displayName(selected.targetKey) }}
+      </button>
+      <!-- FR-4.4: rejecting an edge is remembered, so a re-scan does not resurrect it silently. -->
+      <button class="btn btn-ghost danger" type="button" (click)="hideEdge()">
+        {{ isManualEdge() ? 'Remove' : "Hide — this isn't real" }}
       </button>
     </section>
   </div>

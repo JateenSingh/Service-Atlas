@@ -168,6 +168,28 @@ public class GraphBuilder {
     }
 
     /**
+     * Folds in edges carried over from a previous scan for repositories that did not change
+     * (FR-7.3).
+     *
+     * <p>These arrive already resolved — the signals that produced them were not recomputed — so
+     * they are merged by edge identity like any other, and dangling ones (pointing at a service
+     * that has since disappeared) are pruned.
+     */
+    public DependencyGraph withReusedEdges(DependencyGraph graph, Collection<GraphEdge> reused) {
+        if (reused.isEmpty()) {
+            return graph;
+        }
+        Map<String, GraphEdge> edges = new LinkedHashMap<>();
+        for (GraphEdge edge : graph.edges()) {
+            edges.put(edge.id(), edge);
+        }
+        for (GraphEdge edge : reused) {
+            putEdge(edges, edge);
+        }
+        return new DependencyGraph(graph.nodes(), List.copyOf(edges.values())).pruneDanglingEdges();
+    }
+
+    /**
      * Attaches route catalogues to their nodes (FR-3.4) and labels HTTP edges whose path matches one
      * of the callee's routes — the labelling use the spec calls for.
      */

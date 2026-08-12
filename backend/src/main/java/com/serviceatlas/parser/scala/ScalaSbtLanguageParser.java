@@ -57,8 +57,9 @@ public class ScalaSbtLanguageParser implements LanguageParser {
 
         String serviceName = build.name();
         String nodeKey = nodeKey(serviceName);
+        List<String> aliases = aliases(build, candidate, files);
 
-        GraphNode serviceNode = buildServiceNode(candidate, build, files, nodeKey, serviceName);
+        GraphNode serviceNode = buildServiceNode(candidate, build, files, nodeKey, serviceName, aliases);
 
         List<GraphNode> nodes = new ArrayList<>();
         nodes.add(serviceNode);
@@ -76,15 +77,18 @@ public class ScalaSbtLanguageParser implements LanguageParser {
             }
         }
 
-        return new ParsedRepo(nodes, signals, aliases(build, candidate, files), warnings);
+        return new ParsedRepo(nodes, signals, aliases, warnings);
     }
 
     private GraphNode buildServiceNode(RepoCandidate candidate, SbtBuild build, RepoFiles files,
-                                       String nodeKey, String serviceName) {
+                                       String nodeKey, String serviceName, List<String> aliases) {
         Set<String> frameworks = FrameworkDetector.detectAll(build.dependencies(), files);
         List<Endpoint> endpoints = new PlayRoutesParser(files).parse();
         GraphNode.Builder node = GraphNode.builder(nodeKey, serviceName, NodeType.SERVICE)
                 .endpoints(endpoints)
+                // Stored so an incremental re-scan can restore this repo's identity without
+                // re-parsing it (FR-7.3): other repos' references still have to resolve here.
+                .metadata("aliases", aliases)
                 .framework(FrameworkDetector.detect(build.dependencies(), files))
                 .scalaVersion(build.scalaVersion())
                 .sbtVersion(build.sbtVersion())

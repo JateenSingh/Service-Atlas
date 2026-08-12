@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, throwError } from 'rxjs';
 import {
   GraphResponse,
+  OverlayPatch,
   ProblemDetail,
   RootPathPreview,
   ScanStatusResponse,
@@ -81,6 +82,30 @@ export class ServiceAtlasApi {
 
   getGraph(workspaceId: number): Observable<GraphResponse> {
     return this.get<GraphResponse>(`${API_BASE}/workspaces/${workspaceId}/graph`);
+  }
+
+  /** FR-4.4, FR-5.3 — apply manual edits; the response is the merged graph. */
+  patchOverlay(workspaceId: number, patch: OverlayPatch): Observable<GraphResponse> {
+    return this.http
+      .patch<GraphResponse>(`${API_BASE}/workspaces/${workspaceId}/graph/overlay`, patch)
+      .pipe(catchError(toProblem));
+  }
+
+  // ---------------------------------------------------------------- bundles (FR-1.4)
+
+  bundleUrl(workspaceId: number): string {
+    return `${API_BASE}/workspaces/${workspaceId}/bundle`;
+  }
+
+  importBundle(file: File, name?: string): Observable<Workspace> {
+    const body = new FormData();
+    body.append('file', file);
+    if (name) {
+      body.append('name', name);
+    }
+    return this.http
+      .post<Workspace>(`${API_BASE}/workspaces/import`, body)
+      .pipe(catchError(toProblem));
   }
 
   private get<T>(url: string): Observable<T> {

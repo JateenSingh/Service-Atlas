@@ -118,6 +118,21 @@
     </div>
   }
 
+  @if (graphStore.conflicts().length > 0 && conflictsVisible()) {
+    <!-- FR-4.4: where the newest scan and your edits disagree, say so rather than pick one. -->
+    <div class="conflicts" role="status">
+      <div class="conflicts-body">
+        <strong>{{ graphStore.conflicts().length }} of your edits disagree with the latest scan</strong>
+        <ul>
+          @for (conflict of graphStore.conflicts(); track conflict.target + conflict.kind) {
+            <li>{{ conflict.message }}</li>
+          }
+        </ul>
+      </div>
+      <button class="btn btn-ghost btn-icon" type="button" (click)="dismissConflicts()" aria-label="Dismiss">✕</button>
+    </div>
+  }
+
   <!-- ---------------------------------------------------------------- sidebar -->
   <aside class="sidebar" [attr.aria-hidden]="sidebarCollapsed()">
     <div class="search">

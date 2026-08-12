@@ -1,6 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { GraphStore } from '../../core/state/graph.store';
-import { GraphEdge, GraphNode, SIGNAL_SOURCE_LABELS } from '../../core/models/graph.models';
+import {
+  EdgeType,
+  GraphEdge,
+  GraphNode,
+  SIGNAL_SOURCE_LABELS,
+} from '../../core/models/graph.models';
 import { nodeTypeLabel } from '../canvas/graph-canvas.component';
 
 /**
@@ -25,6 +30,26 @@ export class InspectorPanelComponent {
   readonly nodesByKey = this.graphStore.nodesByKey;
 
   readonly hasSelection = computed(() => this.node() !== null || this.edge() !== null);
+
+  /** Manual-edit UI state (FR-4.4). Kept local: none of it is worth a store. */
+  readonly editing = signal(false);
+  readonly noteDraft = signal('');
+  readonly linkTarget = signal('');
+  readonly linkType = signal<EdgeType>('HTTP');
+  readonly edgeTypes: EdgeType[] = ['HTTP', 'ARTIFACT', 'MESSAGING', 'UNKNOWN'];
+
+  /** Candidate targets for a manual dependency: everything except the node itself. */
+  readonly linkCandidates = computed(() => {
+    const current = this.node();
+    return [...this.nodesByKey().values()]
+      .filter((candidate) => candidate.key !== current?.key)
+      .sort((a, b) => a.displayName.localeCompare(b.displayName));
+  });
+
+  readonly isManualNode = computed(() => this.node()?.metadata?.['manual'] === true);
+  readonly isManualEdge = computed(
+    () => this.edge()?.evidence.some((item) => item.source === 'MANUAL') ?? false,
+  );
 
   readonly metadataEntries = computed(() => {
     const node = this.node();
@@ -62,6 +87,50 @@ export class InspectorPanelComponent {
 
   close(): void {
     this.graphStore.clearSelection();
+  }
+
+  // ------------------------------------------------------------------ manual edits (FR-4.4)
+
+  startEditing(): void {
+    this.noteDraft.set(String(this.node()?.metadata?.['note'] ?? ''));
+    this.editing.set(true);
+  }
+
+  cancelEditing(): void {
+    this.editing.set(false);
+    this.linkTarget.set('');
+  }
+
+  async saveNote(): Promise<void> {
+    const node = this.node();
+    if (node) {
+      await this.graphStore.annotateNode(node.key, this.noteDraft());
+      this.editing.set(false);
+    }
+  }
+
+  async addLink(): Promise<void> {
+    const node = this.node();
+    const target = this.linkTarget();
+    if (!node || !target) {
+      return;
+    }
+    await this.graphStore.addEdge(node.key, target, this.linkType());
+    this.linkTarget.set('');
+  }
+
+  async hideNode(): Promise<void> {
+    const node = this.node();
+    if (node) {
+      await this.graphStore.hideNode(node.key);
+    }
+  }
+
+  async hideEdge(): Promise<void> {
+    const edge = this.edge();
+    if (edge) {
+      await this.graphStore.hideEdge(edge.id);
+    }
   }
 }
 
