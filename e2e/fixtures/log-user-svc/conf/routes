@@ -1,0 +1,2 @@
+GET     /users/:id     controllers.UserController.get(id: String)
+GET     /users         controllers.UserController.search(email: Option[String])

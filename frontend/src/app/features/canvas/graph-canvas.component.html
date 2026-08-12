@@ -1,0 +1,169 @@
+<div class="canvas-host" #host>
+  <svg
+    #svg
+    class="canvas"
+    role="application"
+    aria-label="Service architecture diagram"
+    (wheel)="onWheel($event)"
+    (pointerdown)="onPointerDown($event)"
+    (pointermove)="onPointerMove($event)"
+    (pointerup)="onPointerUp($event)"
+    (pointercancel)="onPointerUp($event)"
+    (click)="onBackgroundClick()"
+  >
+    <defs>
+      <pattern id="sa-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+        <path d="M 24 0 L 0 0 0 24" fill="none" stroke="var(--canvas-grid)" stroke-width="1" />
+      </pattern>
+
+      <!-- One marker per edge type so arrowheads match their line colour. -->
+      @for (marker of ['http', 'artifact', 'messaging', 'unknown']; track marker) {
+        <marker
+          [attr.id]="'sa-arrow-' + marker"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="7"
+          markerHeight="7"
+          orient="auto-start-reverse"
+        >
+          <path d="M 0 0 L 10 5 L 0 10 z" [attr.fill]="'var(--edge-' + marker + ')'" />
+        </marker>
+      }
+    </defs>
+
+    <rect class="grid" width="100%" height="100%" fill="url(#sa-grid)" />
+
+    <g [attr.transform]="transform()">
+      <!-- Edges first: nodes must sit above the lines that connect them. -->
+      <g class="edges">
+        @for (rendered of renderedEdges(); track rendered.edge.id) {
+          <g
+            class="edge"
+            [class.dimmed]="rendered.dimmed"
+            [class.selected]="rendered.selected"
+            (pointerenter)="onEdgeEnter(rendered.edge)"
+            (pointerleave)="onEdgeLeave()"
+            (click)="onEdgeClick(rendered.edge, $event)"
+          >
+            <!-- A wide transparent path makes a 1.5px line comfortably clickable. -->
+            <path class="edge-hit" [attr.d]="rendered.path" />
+            <path
+              class="edge-line"
+              [attr.d]="rendered.path"
+              [attr.stroke]="rendered.colour"
+              [attr.stroke-dasharray]="rendered.dash"
+              [attr.opacity]="rendered.opacity"
+              [attr.marker-end]="'url(#sa-arrow-' + rendered.edge.type.toLowerCase() + ')'"
+            />
+            @if (rendered.edge.label && !rendered.dimmed) {
+              <text class="edge-label" [attr.x]="rendered.labelX" [attr.y]="rendered.labelY">
+                {{ rendered.edge.label }}
+              </text>
+            }
+          </g>
+        }
+      </g>
+
+      <g class="nodes">
+        @for (rendered of renderedNodes(); track rendered.node.key) {
+          <g
+            class="node"
+            [attr.data-node-key]="rendered.node.key"
+            [attr.transform]="'translate(' + rendered.x + ',' + rendered.y + ')'"
+            [class.dimmed]="rendered.dimmed"
+            [class.selected]="rendered.selected"
+            [class.focused]="rendered.focused"
+            [class.external]="rendered.node.type === 'EXTERNAL'"
+            [class.topic]="rendered.node.type === 'TOPIC'"
+            [class.module]="rendered.node.type === 'SUB_MODULE'"
+            tabindex="0"
+            role="button"
+            [attr.aria-label]="rendered.node.displayName + ' — ' + nodeSubtitle(rendered.node)"
+            (click)="onNodeClick(rendered.node, $event)"
+            (dblclick)="onNodeDoubleClick(rendered.node, $event)"
+            (keydown.enter)="onNodeClick(rendered.node, $event)"
+          >
+            <rect
+              class="node-body"
+              [attr.width]="rendered.width"
+              [attr.height]="rendered.height"
+              [attr.rx]="rendered.node.type === 'TOPIC' ? rendered.height / 2 : 10"
+            />
+            <!-- Colour bar rather than a coloured fill: the label stays readable in both themes. -->
+            @if (rendered.node.type !== 'TOPIC') {
+              <rect
+                class="node-accent"
+                width="4"
+                [attr.height]="rendered.height - 16"
+                x="0"
+                y="8"
+                [attr.fill]="rendered.colour"
+              />
+            }
+            <text class="node-name" x="16" [attr.y]="rendered.node.type === 'TOPIC' ? 27 : 27">
+              {{ rendered.node.displayName }}
+            </text>
+            @if (rendered.node.type !== 'TOPIC') {
+              <text class="node-meta" x="16" y="45" [attr.fill]="rendered.colour">
+                {{ nodeSubtitle(rendered.node) }}
+              </text>
+            }
+            @if (rendered.node.warnings.length > 0) {
+              <g [attr.transform]="'translate(' + (rendered.width - 26) + ', 10)'">
+                <circle class="node-warning" cx="8" cy="8" r="8" />
+                <text class="node-warning-mark" x="8" y="12">!</text>
+              </g>
+            }
+            @if (rendered.node.endpoints.length > 0) {
+              <text class="node-endpoints" [attr.x]="rendered.width - 12" y="45">
+                {{ rendered.node.endpoints.length }} ep
+              </text>
+            }
+          </g>
+        }
+      </g>
+    </g>
+  </svg>
+
+  @if (pending()) {
+    <div class="canvas-status" role="status">Laying out…</div>
+  }
+
+  @if (hoveredEdge(); as hovered) {
+    <!-- FR-5.4: hover tooltip with type, confidence and where the evidence came from. -->
+    <div class="edge-tooltip" role="tooltip">
+      <div class="edge-tooltip-head">
+        <span class="tag">{{ hovered.edge.type }}</span>
+        <span class="tag">{{ hovered.edge.confidence }}</span>
+      </div>
+      <div class="edge-tooltip-route mono">
+        {{ hovered.edge.sourceKey }} → {{ hovered.edge.targetKey }}
+      </div>
+      @if (hovered.edge.evidence[0]; as evidence) {
+        <div class="edge-tooltip-evidence mono">
+          {{ evidence.file }}:{{ evidence.line }}
+        </div>
+      }
+      @if (hovered.edge.evidence.length > 1) {
+        <div class="muted">+{{ hovered.edge.evidence.length - 1 }} more</div>
+      }
+    </div>
+  }
+
+  <!-- FR-5.7: minimap for large graphs. -->
+  <sa-minimap class="minimap" />
+
+  <div class="canvas-controls">
+    <button class="btn btn-icon" type="button" (click)="zoomIn()" aria-label="Zoom in" title="Zoom in">+</button>
+    <span class="zoom-level mono">{{ layoutStore.zoomPercent() }}%</span>
+    <button class="btn btn-icon" type="button" (click)="zoomOut()" aria-label="Zoom out" title="Zoom out">−</button>
+    <button class="btn btn-icon" type="button" (click)="fitToScreen()" title="Fit to screen (F)" aria-label="Fit to screen">⤢</button>
+  </div>
+
+  @if (isEmpty()) {
+    <div class="canvas-empty">
+      <p>Nothing matches the current filters.</p>
+    </div>
+  }
+</div>

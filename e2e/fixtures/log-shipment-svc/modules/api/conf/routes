@@ -1,0 +1,2 @@
+GET     /shipments/:id      controllers.ShipmentController.get(id: String)
+POST    /shipments          controllers.ShipmentController.create()

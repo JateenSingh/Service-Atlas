@@ -1,0 +1,214 @@
+@if (node(); as selected) {
+  <header class="panel-head">
+    <div>
+      <span class="tag">{{ typeLabel(selected) }}</span>
+      <h3>{{ selected.displayName }}</h3>
+      <p class="mono muted">{{ selected.key }}</p>
+    </div>
+    <button class="btn btn-ghost btn-icon" type="button" (click)="close()" aria-label="Close inspector">✕</button>
+  </header>
+
+  <div class="panel-body scroll">
+    @if (selected.warnings.length > 0) {
+      <section class="warnings">
+        @for (warning of selected.warnings; track warning) {
+          <p class="warning">{{ warning }}</p>
+        }
+      </section>
+    }
+
+    <section>
+      <h4>Details</h4>
+      <dl class="details">
+        @if (selected.repoPath) {
+          <dt>Repository</dt>
+          <dd class="mono">{{ selected.repoPath }}</dd>
+        }
+        @if (selected.framework) {
+          <dt>Framework</dt>
+          <dd>{{ selected.framework }}</dd>
+        }
+        @if (selected.scalaVersion) {
+          <dt>Scala</dt>
+          <dd class="mono">{{ selected.scalaVersion }}</dd>
+        }
+        @if (selected.sbtVersion) {
+          <dt>SBT</dt>
+          <dd class="mono">{{ selected.sbtVersion }}</dd>
+        }
+        @for (entry of metadataEntries(); track entry.key) {
+          <dt>{{ entry.key }}</dt>
+          <dd class="mono">{{ entry.value }}</dd>
+        }
+      </dl>
+      <div class="node-actions">
+        <button class="btn btn-ghost" type="button" (click)="focus(selected.key)">
+          Focus on neighbours
+        </button>
+        <button class="btn btn-ghost" type="button" (click)="startEditing()">Edit</button>
+        <button class="btn btn-ghost danger" type="button" (click)="hideNode()">Hide</button>
+      </div>
+    </section>
+
+    @if (editing()) {
+      <!-- FR-4.4: manual edits, stored as overlays that survive the next scan. -->
+      <section class="editor">
+        <h4>Your notes and links</h4>
+        <div class="field">
+          <label for="note">Note</label>
+          <input
+            id="note"
+            class="input"
+            type="text"
+            placeholder="Owned by the payments team"
+            [value]="noteDraft()"
+            (input)="noteDraft.set($any($event.target).value)"
+          />
+        </div>
+        <div class="field">
+          <label for="link">Add a dependency the scanner missed</label>
+          <div class="link-row">
+            <select
+              id="link"
+              class="input"
+              [value]="linkTarget()"
+              (change)="linkTarget.set($any($event.target).value)"
+            >
+              <option value="">Choose a service…</option>
+              @for (candidate of linkCandidates(); track candidate.key) {
+                <option [value]="candidate.key">{{ candidate.displayName }}</option>
+              }
+            </select>
+            <select
+              class="input type-select"
+              [value]="linkType()"
+              (change)="linkType.set($any($event.target).value)"
+              aria-label="Dependency type"
+            >
+              @for (type of edgeTypes; track type) {
+                <option [value]="type">{{ type }}</option>
+              }
+            </select>
+            <button class="btn" type="button" (click)="addLink()" [disabled]="!linkTarget()">Add</button>
+          </div>
+        </div>
+        <div class="editor-actions">
+          <button class="btn btn-ghost" type="button" (click)="cancelEditing()">Cancel</button>
+          <button class="btn btn-primary" type="button" (click)="saveNote()">Save note</button>
+        </div>
+      </section>
+    }
+
+    @if (selected.endpoints.length > 0) {
+      <section>
+        <h4>Exposed endpoints <span class="count">{{ selected.endpoints.length }}</span></h4>
+        <ul class="endpoints">
+          @for (endpoint of selected.endpoints; track endpoint.method + endpoint.path) {
+            <li>
+              <span class="method" [attr.data-method]="endpoint.method">{{ endpoint.method }}</span>
+              <span class="mono path">{{ endpoint.path }}</span>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+
+    @if (relations().outgoing.length > 0) {
+      <section>
+        <h4>Depends on <span class="count">{{ relations().outgoing.length }}</span></h4>
+        <ul class="relations">
+          @for (edge of relations().outgoing; track edge.id) {
+            <li>
+              <button type="button" class="relation" (click)="selectEdge(edge)">
+                <span class="relation-name">{{ displayName(edge.targetKey) }}</span>
+                <span class="relation-meta">
+                  <span class="tag">{{ edge.type }}</span>
+                  <span class="tag" [attr.data-confidence]="edge.confidence">{{ edge.confidence }}</span>
+                </span>
+              </button>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+
+    @if (relations().incoming.length > 0) {
+      <section>
+        <h4>Used by <span class="count">{{ relations().incoming.length }}</span></h4>
+        <ul class="relations">
+          @for (edge of relations().incoming; track edge.id) {
+            <li>
+              <button type="button" class="relation" (click)="selectEdge(edge)">
+                <span class="relation-name">{{ displayName(edge.sourceKey) }}</span>
+                <span class="relation-meta">
+                  <span class="tag">{{ edge.type }}</span>
+                  <span class="tag" [attr.data-confidence]="edge.confidence">{{ edge.confidence }}</span>
+                </span>
+              </button>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+  </div>
+} @else {
+  @if (edge(); as selected) {
+  <header class="panel-head">
+    <div>
+      <span class="tag">Dependency</span>
+      <h3>{{ displayName(selected.sourceKey) }} → {{ displayName(selected.targetKey) }}</h3>
+      <p class="muted">
+        {{ selected.type }} · {{ selected.confidence }} confidence
+        @if (selected.label) {
+          · <span class="mono">{{ selected.label }}</span>
+        }
+      </p>
+    </div>
+    <button class="btn btn-ghost btn-icon" type="button" (click)="close()" aria-label="Close inspector">✕</button>
+  </header>
+
+  <div class="panel-body scroll">
+    <section>
+      <h4>Evidence <span class="count">{{ selected.evidence.length }}</span></h4>
+      <p class="section-note">Every dependency below was read from a specific line of the repository.</p>
+      <ul class="evidence">
+        @for (item of selected.evidence; track item.file + item.line + item.source) {
+          <li>
+            <div class="evidence-head">
+              <span class="tag">{{ sourceLabel(item.source) }}</span>
+              <span class="mono muted">{{ item.file }}:{{ item.line }}</span>
+            </div>
+            @if (item.snippet) {
+              <pre class="snippet mono">{{ item.snippet }}</pre>
+            }
+            @if (item.detail) {
+              <p class="muted detail">{{ item.detail }}</p>
+            }
+          </li>
+        }
+      </ul>
+    </section>
+
+    <section class="endpoints-jump">
+      <button class="btn btn-ghost" type="button" (click)="select(selected.sourceKey)">
+        Inspect {{ displayName(selected.sourceKey) }}
+      </button>
+      <button class="btn btn-ghost" type="button" (click)="select(selected.targetKey)">
+        Inspect {{ displayName(selected.targetKey) }}
+      </button>
+      <!-- FR-4.4: rejecting an edge is remembered, so a re-scan does not resurrect it silently. -->
+      <button class="btn btn-ghost danger" type="button" (click)="hideEdge()">
+        {{ isManualEdge() ? 'Remove' : "Hide — this isn't real" }}
+      </button>
+    </section>
+  </div>
+  } @else {
+  <div class="panel-placeholder">
+    <p>Select a service or a dependency to see where it came from.</p>
+    <p class="muted">
+      Click a node for its endpoints and metadata, or a line for the file and line that produced it.
+      Double-click a node to focus on its neighbours.
+    </p>
+  </div>
+}
+}

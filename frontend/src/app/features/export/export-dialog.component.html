@@ -1,0 +1,101 @@
+<div class="backdrop" (click)="close()"></div>
+
+<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="export-title">
+  <header class="dialog-head">
+    <div>
+      <h2 id="export-title">Export diagram</h2>
+      <p class="muted">
+        {{ counts().nodes }} services and {{ counts().edges }} dependencies — exactly what is on
+        screen.
+        @if (counts().hiddenNodes > 0 || counts().hiddenEdges > 0) {
+          <span class="hidden-note">
+            {{ counts().hiddenNodes }} services and {{ counts().hiddenEdges }} dependencies are
+            filtered out and will not be included.
+          </span>
+        }
+      </p>
+    </div>
+    <button class="btn btn-ghost btn-icon" type="button" (click)="close()" aria-label="Close">✕</button>
+  </header>
+
+  <fieldset class="formats">
+    <legend class="sr-only">Export format</legend>
+
+    <label class="format" [class.selected]="format() === 'lucid'">
+      <input type="radio" name="format" value="lucid" [checked]="format() === 'lucid'" (change)="select('lucid')" />
+      <span class="format-body">
+        <span class="format-name">Lucidchart</span>
+        <span class="format-desc">
+          A <span class="mono">.lucid</span> file you import into Lucidchart, laid out exactly as it
+          is here, with a legend.
+        </span>
+      </span>
+    </label>
+
+    <label class="format" [class.selected]="format() === 'svg'">
+      <input type="radio" name="format" value="svg" [checked]="format() === 'svg'" (change)="select('svg')" />
+      <span class="format-body">
+        <span class="format-name">SVG</span>
+        <span class="format-desc">Vector image with a legend. Scales cleanly, editable anywhere.</span>
+      </span>
+    </label>
+
+    <label class="format" [class.selected]="format() === 'png'">
+      <input type="radio" name="format" value="png" [checked]="format() === 'png'" (change)="select('png')" />
+      <span class="format-body">
+        <span class="format-name">PNG</span>
+        <span class="format-desc">Raster image at 2× resolution, for slides and documents.</span>
+      </span>
+    </label>
+
+    <label class="format" [class.selected]="format() === 'json'">
+      <input type="radio" name="format" value="json" [checked]="format() === 'json'" (change)="select('json')" />
+      <span class="format-body">
+        <span class="format-name">JSON</span>
+        <span class="format-desc">The raw graph, with evidence and layout, for your own tooling.</span>
+      </span>
+    </label>
+  </fieldset>
+
+  @if (format() === 'lucid' && lucidStatus().configured) {
+    <!-- FR-6.2: only offered when the server actually has Lucid credentials. -->
+    <div class="api-push">
+      <div>
+        <strong>Connected Lucid account</strong>
+        <p class="muted">Create the document directly instead of importing the file by hand.</p>
+      </div>
+      <button class="btn" type="button" (click)="pushToLucid()" [disabled]="busy()">
+        Create in Lucid
+      </button>
+    </div>
+  }
+
+  @if (pushedUrl(); as url) {
+    <p class="dialog-done" role="status">
+      Created in Lucid. <a [href]="url" target="_blank" rel="noopener">Open the document</a>.
+    </p>
+  }
+
+  @if (error(); as failure) {
+    <p class="dialog-error" role="alert">{{ failure }}</p>
+  }
+
+  @if (done() === 'lucid') {
+    <!-- UX-5: the download is only half the job; say what to do with the file. -->
+    <div class="import-hint" role="status">
+      <strong>Downloaded.</strong> In Lucidchart, choose
+      <span class="mono">File → Import → Lucid Standard Import</span> and pick the
+      <span class="mono">.lucid</span> file. The diagram arrives with its current layout, colours and
+      legend.
+    </div>
+  } @else if (done() !== null) {
+    <p class="dialog-done" role="status">Downloaded as {{ done() }}.</p>
+  }
+
+  <footer class="dialog-foot">
+    <button class="btn btn-ghost" type="button" (click)="close()">Cancel</button>
+    <button class="btn btn-primary" type="button" (click)="run()" [disabled]="busy()">
+      {{ busy() ? 'Exporting…' : 'Download' }}
+    </button>
+  </footer>
+</div>

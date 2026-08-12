@@ -1,0 +1,51 @@
+@if (scan(); as current) {
+  <section class="scan" aria-live="polite">
+    <header class="scan-head">
+      <div>
+        <h3>
+          @if (scanning()) {
+            Scanning…
+          } @else {
+            Scan {{ current.status | lowercase }}
+          }
+        </h3>
+        <p class="muted">
+          {{ progress().done }} of {{ progress().total }} repositories
+          @if (progress().failed > 0) {
+            · <span class="failed">{{ progress().failed }} failed</span>
+          }
+        </p>
+      </div>
+      <span class="percent mono">{{ percent() }}%</span>
+    </header>
+
+    <div
+      class="bar"
+      role="progressbar"
+      [attr.aria-valuenow]="percent()"
+      aria-valuemin="0"
+      aria-valuemax="100"
+    >
+      <div class="bar-fill" [style.width.%]="percent()" [class.done]="!scanning()"></div>
+    </div>
+
+    @if (current.message) {
+      <p class="scan-message">{{ current.message }}</p>
+    }
+
+    @if (sortedRepos().length > 0) {
+      <ul class="repo-list scroll">
+        @for (repo of sortedRepos(); track repo.repoPath) {
+          <li [attr.data-status]="repo.status">
+            <span class="repo-status" aria-hidden="true"></span>
+            <span class="repo-path mono">{{ repo.repoPath }}</span>
+            <span class="repo-meta">{{ statusLabel(repo) }}</span>
+            @if (repo.status === 'FAILED' && repo.message) {
+              <span class="repo-error">{{ repo.message }}</span>
+            }
+          </li>
+        }
+      </ul>
+    }
+  </section>
+}

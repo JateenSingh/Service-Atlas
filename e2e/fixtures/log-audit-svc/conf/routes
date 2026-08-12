@@ -1,0 +1,2 @@
+POST    /audit/events     controllers.AuditController.record()
+GET     /audit/events     controllers.AuditController.search(from: Option[String])

@@ -1,0 +1,8 @@
+# Routes for log-order-svc
+
+GET     /orders                      controllers.OrderController.list(page: Int ?= 1)
+GET     /orders/:id                  controllers.OrderController.get(id: String)
+POST    /orders                      controllers.OrderController.create()
+PUT     /orders/:id/status           controllers.OrderController.updateStatus(id: String)
+DELETE  /orders/:id                  controllers.OrderController.cancel(id: String)
+GET     /health                      controllers.HealthController.check()

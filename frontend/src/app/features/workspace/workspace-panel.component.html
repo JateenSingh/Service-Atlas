@@ -1,0 +1,207 @@
+@if (!store.hasWorkspaces() && !store.loading()) {
+  <!-- UX-2: first-run experience — the three steps, and one obvious thing to do. -->
+  <section class="first-run">
+    <div class="first-run-inner">
+      <h1>Map your services</h1>
+      <p class="lede">
+        Point Service Atlas at the folder holding your cloned repositories. It reads build files,
+        configuration and source — never runs them — and draws what depends on what.
+      </p>
+
+      <ol class="steps">
+        <li><span class="step-num">1</span> Pick the folder your repos live in</li>
+        <li><span class="step-num">2</span> Scan — every repo is parsed, failures included</li>
+        <li><span class="step-num">3</span> Explore the diagram, then export it</li>
+      </ol>
+    </div>
+  </section>
+}
+
+@if (showForm()) {
+  <section class="workspace-form" aria-label="New workspace">
+    <header class="form-head">
+      <h2>{{ store.hasWorkspaces() ? 'New workspace' : 'Get started' }}</h2>
+      @if (store.hasWorkspaces()) {
+        <button class="btn btn-ghost btn-icon" type="button" (click)="closeForm()" aria-label="Cancel">✕</button>
+      }
+    </header>
+
+    <div class="field">
+      <label for="rootPath">Repository folder</label>
+      <div class="path-row">
+        <input
+          id="rootPath"
+          class="input mono"
+          type="text"
+          placeholder="/Users/you/code/logistics"
+          [value]="rootPath()"
+          (input)="rootPath.set($any($event.target).value)"
+          (blur)="checkPath()"
+          (keydown.enter)="checkPath()"
+        />
+        <button class="btn" type="button" (click)="checkPath()" [disabled]="previewing() || !rootPath().trim()">
+          {{ previewing() ? 'Checking…' : 'Check' }}
+        </button>
+      </div>
+      <span class="hint">
+        The full path to the parent folder containing your repositories. Service Atlas runs locally
+        and reads it directly.
+      </span>
+    </div>
+
+    @if (preview(); as found) {
+      <div class="preview" [class.empty]="found.repoCount === 0">
+        @if (found.repoCount === 0) {
+          <p><strong>No SBT repositories found</strong> under {{ found.rootPath }}.</p>
+          <p class="muted">Try a parent folder, or raise the scan depth below.</p>
+        } @else {
+          <p>
+            <strong>{{ found.repoCount }} repositories</strong> found under
+            <span class="mono">{{ found.rootPath }}</span>
+          </p>
+          <p class="muted mono sample">{{ found.sampleRepoPaths.slice(0, 6).join(' · ') }}</p>
+        }
+      </div>
+    }
+
+    <div class="field">
+      <label for="workspaceName">Workspace name</label>
+      <input
+        id="workspaceName"
+        class="input"
+        type="text"
+        placeholder="Logistics"
+        [value]="name()"
+        (input)="name.set($any($event.target).value)"
+      />
+    </div>
+
+    <button class="btn btn-ghost advanced-toggle" type="button" (click)="toggleAdvanced()">
+      {{ showAdvanced() ? 'Hide' : 'Show' }} scan options
+    </button>
+
+    @if (showAdvanced()) {
+      <div class="advanced">
+        <div class="field">
+          <label for="maxDepth">Scan depth</label>
+          <input
+            id="maxDepth"
+            class="input"
+            type="number"
+            min="1"
+            max="12"
+            [value]="maxDepth()"
+            (input)="maxDepth.set(+$any($event.target).value)"
+          />
+          <span class="hint">How many folders deep to look for repositories. Default 3.</span>
+        </div>
+        <div class="field">
+          <label for="ignored">Also ignore</label>
+          <input
+            id="ignored"
+            class="input mono"
+            type="text"
+            placeholder="archive, sandbox"
+            [value]="ignored()"
+            (input)="ignored.set($any($event.target).value)"
+          />
+          <span class="hint">
+            Comma-separated folder names, on top of .git, target and node_modules.
+          </span>
+        </div>
+      </div>
+    }
+
+    @if (formError(); as error) {
+      <p class="form-error" role="alert">{{ error }}</p>
+    }
+
+    <button class="btn btn-primary create" type="button" (click)="create()" [disabled]="!canCreate()">
+      {{ creating() ? 'Creating…' : 'Create workspace and scan' }}
+    </button>
+  </section>
+}
+
+@if (store.hasWorkspaces()) {
+  <section class="workspaces" aria-label="Workspaces">
+    <header class="list-head">
+      <h2>Workspaces</h2>
+      <div class="list-actions">
+        <!-- FR-1.4: bundles move a workspace between machines without moving the code. -->
+        <label class="btn" [class.busy]="importing()">
+          {{ importing() ? 'Importing…' : 'Import .atlas' }}
+          <input
+            type="file"
+            accept=".atlas,application/zip,application/octet-stream"
+            class="sr-only"
+            (change)="importBundle($event)"
+          />
+        </label>
+        @if (!showForm()) {
+          <button class="btn btn-primary" type="button" (click)="openForm()">New workspace</button>
+        }
+      </div>
+    </header>
+
+    <ul class="workspace-list">
+      @for (workspace of store.workspaces(); track workspace.id) {
+        <li>
+          <button
+            type="button"
+            class="workspace"
+            [class.selected]="store.selected()?.id === workspace.id"
+            (click)="select(workspace)"
+          >
+            <span class="workspace-main">
+              <span class="workspace-name">{{ workspace.name }}</span>
+              <span class="workspace-path mono muted">{{ workspace.rootPath }}</span>
+            </span>
+            <span class="workspace-meta">
+              @if (workspace.latestScan; as scan) {
+                <span class="tag" [attr.data-status]="scan.status">{{ scan.status }}</span>
+                <span class="muted">{{ scan.repoCount }} repos</span>
+                @if (scan.errorCount > 0) {
+                  <span class="tag warn">{{ scan.errorCount }} failed</span>
+                }
+              } @else {
+                <span class="tag">never scanned</span>
+              }
+            </span>
+            <span class="workspace-actions">
+              <span
+                class="btn btn-ghost btn-icon"
+                role="button"
+                tabindex="0"
+                title="Scan now"
+                (click)="scan(workspace); $event.stopPropagation()"
+                (keydown.enter)="scan(workspace); $event.stopPropagation()"
+              >↻</span>
+              <span
+                class="btn btn-ghost btn-icon"
+                role="button"
+                tabindex="0"
+                title="Export as .atlas bundle"
+                (click)="exportBundle(workspace, $event)"
+                (keydown.enter)="exportBundle(workspace, $event)"
+              >⤓</span>
+              <span
+                class="btn btn-ghost btn-icon danger"
+                role="button"
+                tabindex="0"
+                title="Delete workspace"
+                (click)="remove(workspace, $event)"
+                (keydown.enter)="remove(workspace, $event)"
+              >✕</span>
+            </span>
+          </button>
+        </li>
+      }
+    </ul>
+  </section>
+}
+
+@if (store.error(); as error) {
+  <p class="form-error" role="alert">{{ error }}</p>
+}
+
+<sa-scan-progress />
