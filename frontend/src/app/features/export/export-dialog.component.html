@@ -21,6 +21,17 @@
   <fieldset class="formats">
     <legend class="sr-only">Export format</legend>
 
+    <label class="format" [class.selected]="format() === 'lucid'">
+      <input type="radio" name="format" value="lucid" [checked]="format() === 'lucid'" (change)="select('lucid')" />
+      <span class="format-body">
+        <span class="format-name">Lucidchart</span>
+        <span class="format-desc">
+          A <span class="mono">.lucid</span> file you import into Lucidchart, laid out exactly as it
+          is here, with a legend.
+        </span>
+      </span>
+    </label>
+
     <label class="format" [class.selected]="format() === 'svg'">
       <input type="radio" name="format" value="svg" [checked]="format() === 'svg'" (change)="select('svg')" />
       <span class="format-body">
@@ -46,18 +57,45 @@
     </label>
   </fieldset>
 
+  @if (format() === 'lucid' && lucidStatus().configured) {
+    <!-- FR-6.2: only offered when the server actually has Lucid credentials. -->
+    <div class="api-push">
+      <div>
+        <strong>Connected Lucid account</strong>
+        <p class="muted">Create the document directly instead of importing the file by hand.</p>
+      </div>
+      <button class="btn" type="button" (click)="pushToLucid()" [disabled]="busy()">
+        Create in Lucid
+      </button>
+    </div>
+  }
+
+  @if (pushedUrl(); as url) {
+    <p class="dialog-done" role="status">
+      Created in Lucid. <a [href]="url" target="_blank" rel="noopener">Open the document</a>.
+    </p>
+  }
+
   @if (error(); as failure) {
     <p class="dialog-error" role="alert">{{ failure }}</p>
   }
 
-  @if (done(); as finished) {
-    <p class="dialog-done" role="status">Downloaded as {{ finished | uppercase }}.</p>
+  @if (done() === 'lucid') {
+    <!-- UX-5: the download is only half the job; say what to do with the file. -->
+    <div class="import-hint" role="status">
+      <strong>Downloaded.</strong> In Lucidchart, choose
+      <span class="mono">File → Import → Lucid Standard Import</span> and pick the
+      <span class="mono">.lucid</span> file. The diagram arrives with its current layout, colours and
+      legend.
+    </div>
+  } @else if (done() !== null) {
+    <p class="dialog-done" role="status">Downloaded as {{ done() }}.</p>
   }
 
   <footer class="dialog-foot">
     <button class="btn btn-ghost" type="button" (click)="close()">Cancel</button>
     <button class="btn btn-primary" type="button" (click)="run()" [disabled]="busy()">
-      {{ busy() ? 'Exporting…' : 'Export' }}
+      {{ busy() ? 'Exporting…' : 'Download' }}
     </button>
   </footer>
 </div>

@@ -1,28 +1,43 @@
-import { UpperCasePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, output, signal } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  output,
+  signal,
+} from '@angular/core';
+import { firstValueFrom } from 'rxjs';
+import { API_BASE, problemMessage } from '../../core/api/service-atlas-api.service';
 import { GraphStore } from '../../core/state/graph.store';
 import { LayoutStore } from '../../core/state/layout.store';
 import { ThemeStore } from '../../core/state/theme.store';
 import { WorkspaceStore } from '../../core/state/workspace.store';
-import { DARK_PALETTE, LIGHT_PALETTE, renderDiagramSvg } from '../../core/export/diagram-svg';
 
-export type ExportFormat = 'svg' | 'png' | 'json';
+export type ExportFormat = 'lucid' | 'svg' | 'png' | 'json';
+
+interface LucidStatus {
+  configured: boolean;
+  connected: boolean;
+}
 
 /**
- * Export dialog (UX-5, FR-6.3, FR-6.4).
+ * Export dialog (UX-5, FR-6).
  *
- * Everything it writes comes from `visibleGraph`, so "export what I see" is structural rather than
- * a rule someone has to remember.
+ * <p>Every format is rendered by the backend from the view posted here, so the four outputs cannot
+ * drift apart and the Lucid schema stays in one place (ADR-003). What gets posted is
+ * `visibleGraph` plus the current layout — which is what makes "export what I see" (FR-6.3)
+ * structural rather than a rule someone has to remember.
  */
 @Component({
   selector: 'sa-export-dialog',
   standalone: true,
-  imports: [UpperCasePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './export-dialog.component.html',
   styleUrl: './export-dialog.component.css',
 })
 export class ExportDialogComponent {
+  private readonly http = inject(HttpClient);
   private readonly graphStore = inject(GraphStore);
   private readonly layoutStore = inject(LayoutStore);
   private readonly workspaceStore = inject(WorkspaceStore);
@@ -30,10 +45,12 @@ export class ExportDialogComponent {
 
   readonly closed = output<void>();
 
-  readonly format = signal<ExportFormat>('svg');
+  readonly format = signal<ExportFormat>('lucid');
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
-  readonly done = signal<string | null>(null);
+  readonly done = signal<ExportFormat | null>(null);
+  readonly lucidStatus = signal<LucidStatus>({ configured: false, connected: false });
+  readonly pushedUrl = signal<string | null>(null);
 
   readonly counts = computed(() => ({
     nodes: this.graphStore.visibleNodeCount(),
@@ -42,10 +59,23 @@ export class ExportDialogComponent {
     hiddenEdges: this.graphStore.hiddenEdgeCount(),
   }));
 
+  constructor() {
+    // FR-6.2: the API option is hidden entirely unless the server has credentials.
+    const workspace = this.workspaceStore.selected();
+    if (workspace) {
+      void firstValueFrom(
+        this.http.get<LucidStatus>(`${API_BASE}/workspaces/${workspace.id}/export/lucid-api/status`),
+      )
+        .then((status) => this.lucidStatus.set(status))
+        .catch(() => this.lucidStatus.set({ configured: false, connected: false }));
+    }
+  }
+
   select(format: ExportFormat): void {
     this.format.set(format);
     this.done.set(null);
     this.error.set(null);
+    this.pushedUrl.set(null);
   }
 
   close(): void {
@@ -53,98 +83,66 @@ export class ExportDialogComponent {
   }
 
   async run(): Promise<void> {
+    const workspace = this.workspaceStore.selected();
+    if (!workspace) {
+      return;
+    }
     this.busy.set(true);
     this.error.set(null);
     this.done.set(null);
+
     try {
-      switch (this.format()) {
-        case 'svg':
-          this.downloadSvg();
-          break;
-        case 'png':
-          await this.downloadPng();
-          break;
-        case 'json':
-          this.downloadJson();
-          break;
-      }
-      this.done.set(this.format());
-    } catch (failure) {
-      this.error.set(failure instanceof Error ? failure.message : 'Export failed.');
+      const format = this.format();
+      const url =
+        format === 'lucid'
+          ? `${API_BASE}/workspaces/${workspace.id}/export/lucid`
+          : `${API_BASE}/workspaces/${workspace.id}/export/${format}`;
+
+      const blob = await firstValueFrom(
+        this.http.post(url, this.diagramView(), { responseType: 'blob' }),
+      );
+      download(`${slug(workspace.name)}.${format}`, blob);
+      this.done.set(format);
+    } catch (problem) {
+      this.error.set(await readProblem(problem));
     } finally {
       this.busy.set(false);
     }
   }
 
-  private svgSource(): string {
-    return renderDiagramSvg(this.graphStore.visibleGraph(), this.layoutStore.layout(), {
-      palette: this.theme.theme() === 'dark' ? DARK_PALETTE : LIGHT_PALETTE,
-      title: this.workspaceStore.selected()?.name,
-      legend: true,
-    });
-  }
-
-  private downloadSvg(): void {
-    download(this.baseName() + '.svg', new Blob([this.svgSource()], { type: 'image/svg+xml' }));
-  }
-
-  /** FR-6.4 — PNG by canvas serialisation, at 2× for a usable resolution in slides and docs. */
-  private async downloadPng(): Promise<void> {
-    const source = this.svgSource();
-    const image = new Image();
-    const url = URL.createObjectURL(new Blob([source], { type: 'image/svg+xml' }));
-
+  /** FR-6.2 — push straight into the user's Lucid account, when it is configured. */
+  async pushToLucid(): Promise<void> {
+    const workspace = this.workspaceStore.selected();
+    if (!workspace) {
+      return;
+    }
+    this.busy.set(true);
+    this.error.set(null);
     try {
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve();
-        image.onerror = () => reject(new Error('The diagram could not be rasterised.'));
-        image.src = url;
-      });
-
-      const scale = 2;
-      const canvas = document.createElement('canvas');
-      canvas.width = (image.naturalWidth || 1200) * scale;
-      canvas.height = (image.naturalHeight || 800) * scale;
-      const context = canvas.getContext('2d');
-      if (!context) {
-        throw new Error('This browser cannot render to a canvas.');
-      }
-      context.scale(scale, scale);
-      context.drawImage(image, 0, 0);
-
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-      if (!blob) {
-        throw new Error('The PNG could not be encoded.');
-      }
-      download(this.baseName() + '.png', blob);
+      const created = await firstValueFrom(
+        this.http.post<{ editUrl: string }>(
+          `${API_BASE}/workspaces/${workspace.id}/export/lucid-api`,
+          this.diagramView(),
+        ),
+      );
+      this.pushedUrl.set(created.editUrl);
+    } catch (problem) {
+      this.error.set(await readProblem(problem));
     } finally {
-      URL.revokeObjectURL(url);
+      this.busy.set(false);
     }
   }
 
-  private downloadJson(): void {
-    const payload = {
-      workspace: this.workspaceStore.selected()?.name ?? null,
-      scanId: this.graphStore.scanId(),
-      exportedAt: new Date().toISOString(),
-      filters: {
-        edgeTypes: [...this.graphStore.filters().edgeTypes],
-        minConfidence: this.graphStore.filters().minConfidence,
-        showExternal: this.graphStore.filters().showExternal,
-        search: this.graphStore.filters().search,
-      },
+  /** The exact view on screen: filtered graph, current layout, current theme. */
+  private diagramView() {
+    const layout = this.layoutStore.layout();
+    return {
+      title: this.workspaceStore.selected()?.name ?? 'Service Atlas',
       graph: this.graphStore.visibleGraph(),
-      layout: this.layoutStore.layout(),
+      positions: layout.positions,
+      routes: layout.routes,
+      theme: this.theme.theme(),
     };
-    download(
-      this.baseName() + '.json',
-      new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }),
-    );
-  }
-
-  private baseName(): string {
-    const name = this.workspaceStore.selected()?.name ?? 'service-atlas';
-    return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'service-atlas';
   }
 }
 
@@ -158,4 +156,24 @@ export function download(fileName: string, blob: Blob): void {
   anchor.remove();
   // Revoked on the next tick: revoking synchronously can cancel the download in some browsers.
   setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function slug(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'service-atlas';
+}
+
+/**
+ * Problem details arrive as a Blob when the request asked for one, so the server's explanation has
+ * to be read back out rather than shown as "[object Blob]".
+ */
+async function readProblem(problem: unknown): Promise<string> {
+  const body = (problem as { error?: unknown })?.error;
+  if (body instanceof Blob) {
+    try {
+      return problemMessage(JSON.parse(await body.text()));
+    } catch {
+      return 'Export failed.';
+    }
+  }
+  return problemMessage(problem);
 }
