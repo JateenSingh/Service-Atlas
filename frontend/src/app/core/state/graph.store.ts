@@ -192,12 +192,9 @@ export class GraphStore {
     this.errorSignal.set(null);
     this.workspaceIdSignal.set(workspaceId);
     try {
-      const response = await firstValueFrom(this.api.getGraph(workspaceId));
-      console.debug('API response received:', response);
-      this.accept(response);
+      this.accept(await firstValueFrom(this.api.getGraph(workspaceId)));
       this.clearSelection();
     } catch (problem) {
-      console.error('Error loading graph:', problem);
       this.errorSignal.set(problemMessage(problem));
       this.graphSignal.set({ nodes: [], edges: [] });
     } finally {
@@ -213,7 +210,6 @@ export class GraphStore {
     this.conflictsSignal.set(response.conflicts ?? []);
     this.hiddenNodeKeysSignal.set(new Set(response.hiddenNodes ?? []));
     this.hiddenEdgeIdsSignal.set(new Set(response.hiddenEdges ?? []));
-    console.debug('GraphStore.accept: hidden nodes =', response.hiddenNodes?.length ?? 0, 'hidden edges =', response.hiddenEdges?.length ?? 0);
   }
 
   /**
@@ -229,11 +225,8 @@ export class GraphStore {
     }
     this.errorSignal.set(null);
     try {
-      const response = await firstValueFrom(this.api.patchOverlay(workspaceId, patch));
-      console.debug('Patch response received:', response);
-      this.accept(response);
+      this.accept(await firstValueFrom(this.api.patchOverlay(workspaceId, patch)));
     } catch (problem) {
-      console.error('Error applying patch:', problem);
       this.errorSignal.set(problemMessage(problem));
     }
   }
