@@ -25,9 +25,12 @@ Open <http://localhost:8080>, then:
 
 1. **New Workspace** → give it a name and the path to the folder containing your cloned repos.
 2. **Scan** → watch per-repository progress as it discovers and parses each service.
-3. **Explore** → pan, zoom, filter, click a node for its endpoints and a click-through to the exact
-   file and line each dependency came from.
-4. **Export** → `.lucid` for Lucidchart, or SVG / PNG / JSON.
+3. **Explore** → pan, zoom, filter, click a node to see:
+   - Service description (from README.md or build.sbt comments)
+   - Exposed endpoints with deprecation indicators
+   - Click-through to the exact file and line each dependency came from
+4. **Edit & Hide** → manually add/remove edges and nodes, hide items from view, restore with "Show all hidden"
+5. **Export** → `.lucid` for Lucidchart, or SVG / PNG / JSON.
 
 Backend-only, for faster iteration:
 
@@ -84,11 +87,41 @@ are absent, the API export option is hidden in the UI.
 | Service URL / host / discovery key | `application.conf`, `reference.conf` | HIGH |
 | HTTP client call | `ws.url`, `WSClient`, sttp, http4s, Akka/Pekko HTTP clients | MEDIUM |
 | Kafka / RabbitMQ produce & consume | config and client APIs, via a topic node | MEDIUM |
+| Google Pub/Sub publish & subscribe | `projects/…/topics/…` paths, `pubsub.*` config, `TopicName.of`, `Subscriber`, Alpakka | MEDIUM |
+| Database / cache connection | JDBC, MongoDB and Redis connection strings; `dbname`/`database`/`keyspace` keys; driver classes and Slick profiles | HIGH |
+| Schema ownership | Flyway migrations, Play evolutions | HIGH |
+| Database driver on the classpath | `org.postgresql:postgresql`, `io.lettuce:lettuce-core`, … | LOW |
 | Cross-service package import | `import com.company.logusersvc._` | LOW |
-| Exposed endpoints | Play `conf/routes` | informational |
+| Service description | README.md headings or build.sbt comments | informational |
+| Exposed endpoints | Play `conf/routes` with optional `@deprecated` markers | informational |
 
 Every edge carries the file and line it came from, and you can filter the whole view by confidence
 if you only want to see what is certain.
+
+## Viewing Service Details
+
+Click any node on the canvas to open the inspector panel, which displays:
+
+- **Description** — extracted from `README.md` headings or `build.sbt` comments
+- **Endpoints** — from Play `conf/routes` files, with deprecation markers for endpoints tagged with `@deprecated` comments
+- **Dependencies** — incoming and outgoing edges with their sources and confidence
+
+## Managing the Graph
+
+- **Hide nodes** — right-click a node to hide it from the diagram (useful for focusing on a subset)
+- **Show all hidden** — a toolbar button appears when hidden items exist, click to restore all at once
+- **Manual edits** — add or remove nodes and edges directly in the graph; changes persist across rescans
+
+## Storage & Stability
+
+Datastores are drawn as cylinders and keyed by **engine + database name**, not by hostname, so two
+services reaching one database through different hosts converge on a single node — a shared database
+is coupling, and the diagram should say so. A database nothing names — the URL comes from the
+environment, or only a driver is on the classpath — belongs to the service that configured it and is
+drawn as `<service> db`, never merged with every other service's unnamed database of the same engine.
+Datastores have their own show/hide filter and are preserved across rescans. Google Pub/Sub flows use 
+the same topic node as Kafka, tagged with the broker, so a topic reads as "this sits between these services" 
+whatever carries it.
 
 Name matching is spelling-insensitive: `log-quote-svc`, `logQuoteSvc` and `LOG_QUOTE_SVC` are the
 same service, and the client artifact `log-quote-svc-client` resolves to it. Ambiguous matches
@@ -111,8 +144,8 @@ The end-to-end suite starts `backend/build/libs/service-atlas.jar`, so build it 
 `PLAYWRIGHT_CHROMIUM_PATH=/path/to/chrome`; otherwise run `npx playwright install chromium` once.
 
 `e2e/fixtures/` holds a set of realistic Scala/SBT services (Play, Akka HTTP, http4s, gRPC, a
-multi-module build) wired together through build dependencies, config URLs, HTTP client calls and a
-Kafka topic. Both the backend integration tests and the Playwright E2E scan it.
+multi-module build) wired together through build dependencies, config URLs, HTTP client calls, Kafka
+and Pub/Sub topics, Postgres/Mongo/Redis/BigQuery connections and Flyway migrations. Both the backend integration tests and the Playwright E2E scan it.
 
 ### Layout
 

@@ -189,3 +189,131 @@ describe('GraphStore', () => {
     expect(store.focusKey()).toBeNull();
   });
 });
+
+/**
+ * FR-3.9 / FR-3.10 — datastores and Pub/Sub are first-class on the canvas, which means they have to
+ * be first-class in the filtering too: a persistence edge must be visible by default and must
+ * disappear cleanly, taking its now-orphaned datastore with it.
+ */
+describe('GraphStore with datastores and topics', () => {
+  const graph: DependencyGraph = {
+    nodes: [
+      { key: 'order', displayName: 'log-order-svc', type: 'SERVICE', endpoints: [], warnings: [], metadata: {} },
+      { key: 'quote', displayName: 'log-quote-svc', type: 'SERVICE', endpoints: [], warnings: [], metadata: {} },
+      {
+        key: 'datastore:redis:pricingcache',
+        displayName: 'pricing-cache',
+        type: 'DATASTORE',
+        endpoints: [],
+        warnings: [],
+        metadata: { engine: 'Redis' },
+      },
+      {
+        key: 'topic:ordereventsv2',
+        displayName: 'order-events-v2',
+        type: 'TOPIC',
+        endpoints: [],
+        warnings: [],
+        metadata: { broker: 'Google Pub/Sub' },
+      },
+    ],
+    edges: [
+      {
+        id: 'order->cache:PERSISTENCE',
+        sourceKey: 'order',
+        targetKey: 'datastore:redis:pricingcache',
+        type: 'PERSISTENCE',
+        confidence: 'HIGH',
+        evidence: [],
+      },
+      {
+        id: 'quote->cache:PERSISTENCE',
+        sourceKey: 'quote',
+        targetKey: 'datastore:redis:pricingcache',
+        type: 'PERSISTENCE',
+        confidence: 'HIGH',
+        evidence: [],
+      },
+      {
+        id: 'order->topic:MESSAGING',
+        sourceKey: 'order',
+        targetKey: 'topic:ordereventsv2',
+        type: 'MESSAGING',
+        confidence: 'MEDIUM',
+        evidence: [],
+      },
+    ],
+  };
+
+  const response: GraphResponse = {
+    scanId: 8,
+    nodeCount: 4,
+    edgeCount: 3,
+    graph,
+    positions: {},
+    conflicts: [],
+  };
+
+  let store: GraphStore;
+
+  beforeEach(async () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        {
+          provide: ServiceAtlasApi,
+          useValue: { getGraph: () => of(response), patchOverlay: () => of(response) },
+        },
+      ],
+    });
+    store = TestBed.inject(GraphStore);
+    await store.load(1);
+  });
+
+  it('shows persistence edges without being asked', () => {
+    expect(store.visibleEdgeCount()).toBe(3);
+    expect(store.filtersActive()).toBeFalse();
+  });
+
+  it('turning persistence off hides the storage edges and nothing else', () => {
+    store.toggleEdgeType('PERSISTENCE');
+
+    expect(store.visibleGraph().edges.map((edge) => edge.type)).toEqual(['MESSAGING']);
+    // The datastore itself stays: edge filters filter edges. A node only disappears through the
+    // search box or the external toggle, which is what makes "hidden nodes" a separate count.
+    expect(store.visibleNodeCount()).toBe(4);
+    expect(store.hiddenNodeCount()).toBe(0);
+  });
+
+  it('a shared datastore reports both of the services that reach it', () => {
+    store.selectNode('datastore:redis:pricingcache');
+
+    expect(store.selectedNodeEdges().incoming.map((edge) => edge.sourceKey).sort()).toEqual([
+      'order',
+      'quote',
+    ]);
+    expect(store.selectedNodeEdges().outgoing).toEqual([]);
+  });
+
+  it('hides datastores on request, and the persistence edges with them', () => {
+    store.setShowDatastores(false);
+
+    expect(store.visibleGraph().nodes.map((node) => node.key)).not.toContain(
+      'datastore:redis:pricingcache',
+    );
+    expect(store.visibleGraph().edges.map((edge) => edge.type)).toEqual(['MESSAGING']);
+    expect(store.filtersActive()).toBeTrue();
+
+    store.resetFilters();
+    expect(store.visibleNodeCount()).toBe(4);
+  });
+
+  it('a datastore is searchable by name like anything else', () => {
+    store.setSearch('pricing');
+
+    expect(store.visibleGraph().nodes.map((node) => node.key)).toEqual([
+      'datastore:redis:pricingcache',
+    ]);
+  });
+});

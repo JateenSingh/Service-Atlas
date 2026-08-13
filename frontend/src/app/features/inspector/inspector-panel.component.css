@@ -286,3 +286,35 @@ ul {
   justify-content: flex-end;
   gap: var(--space-2);
 }
+
+.description {
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+  color: var(--text-secondary);
+}
+
+.description p {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.endpoints li.deprecated {
+  opacity: 0.7;
+}
+
+.deprecation-badge {
+  padding: 0 var(--space-2);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warning) 20%, transparent);
+  color: var(--warning);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-left: auto;
+  flex-shrink: 0;
+}

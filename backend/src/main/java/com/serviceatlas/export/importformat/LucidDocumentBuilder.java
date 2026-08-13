@@ -127,6 +127,7 @@ public class LucidDocumentBuilder {
         List<String> rows = List.of(
                 "Solid line — HTTP call",
                 "Dashed line — messaging via a topic",
+                "Cylinder — datastore a service reads or writes",
                 "Dotted line — build dependency",
                 "Faded line — lower confidence",
                 "Dashed outline — service not found locally");
@@ -158,15 +159,20 @@ public class LucidDocumentBuilder {
     }
 
     private static String shapeTypeFor(GraphNode node) {
-        return node.type() == NodeType.TOPIC
-                ? LucidDocument.ShapeTypes.ELLIPSE
-                : LucidDocument.ShapeTypes.ROUNDED_RECTANGLE;
+        return switch (node.type()) {
+            case TOPIC -> LucidDocument.ShapeTypes.ELLIPSE;
+            // Lucid ships a cylinder in its standard library; it is what a reader expects storage
+            // to look like, and it survives the round trip into Lucidchart's own shape palette.
+            case DATASTORE -> LucidDocument.ShapeTypes.CYLINDER;
+            default -> LucidDocument.ShapeTypes.ROUNDED_RECTANGLE;
+        };
     }
 
     /** Two lines: the service name, then what it is — the same information the canvas shows. */
     private static String labelFor(GraphNode node) {
         String subtitle = switch (node.type()) {
-            case TOPIC -> "topic";
+            case TOPIC -> String.valueOf(node.metadata().getOrDefault("broker", "topic"));
+            case DATASTORE -> String.valueOf(node.metadata().getOrDefault("engine", "datastore"));
             case EXTERNAL -> "external";
             case SUB_MODULE -> "module";
             case SERVICE -> node.framework() == null || node.framework().equals("Unknown")
@@ -186,9 +192,8 @@ public class LucidDocumentBuilder {
 
     private static String strokeStyleFor(EdgeType type) {
         return switch (type) {
-            case MESSAGING -> LucidDocument.Stroke.DASHED;
+            case MESSAGING, UNKNOWN, PERSISTENCE -> LucidDocument.Stroke.DASHED;
             case ARTIFACT -> LucidDocument.Stroke.DOTTED;
-            case UNKNOWN -> LucidDocument.Stroke.DASHED;
             case HTTP -> LucidDocument.Stroke.SOLID;
         };
     }

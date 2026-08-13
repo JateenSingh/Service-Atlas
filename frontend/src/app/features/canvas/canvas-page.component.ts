@@ -74,6 +74,10 @@ export class CanvasPageComponent {
     this.graphStore.setShowExternal(!this.graphStore.filters().showExternal);
   }
 
+  toggleDatastores(): void {
+    this.graphStore.setShowDatastores(!this.graphStore.filters().showDatastores);
+  }
+
   setDirection(direction: LayoutDirection): void {
     this.layoutStore.setDirection(direction);
   }
@@ -112,6 +116,15 @@ export class CanvasPageComponent {
     this.filtersOpen.update((open) => !open);
   }
 
+  async showAll(): Promise<void> {
+    for (const key of this.graphStore.hiddenNodeKeys()) {
+      await this.graphStore.unhideNode(key);
+    }
+    for (const id of this.graphStore.hiddenEdgeIds()) {
+      await this.graphStore.unhideEdge(id);
+    }
+  }
+
   dismissConflicts(): void {
     this.conflictsVisible.set(false);
   }
@@ -127,7 +140,9 @@ export class CanvasPageComponent {
   nodeKindLabel(node: GraphNode): string {
     switch (node.type) {
       case 'TOPIC':
-        return 'topic';
+        return String(node.metadata?.['broker'] ?? 'topic').toLowerCase();
+      case 'DATASTORE':
+        return String(node.metadata?.['engine'] ?? 'datastore').toLowerCase();
       case 'EXTERNAL':
         return 'external';
       case 'SUB_MODULE':
@@ -144,9 +159,11 @@ function typeRank(node: GraphNode): number {
       return 0;
     case 'SUB_MODULE':
       return 1;
-    case 'TOPIC':
+    case 'DATASTORE':
       return 2;
-    default:
+    case 'TOPIC':
       return 3;
+    default:
+      return 4;
   }
 }

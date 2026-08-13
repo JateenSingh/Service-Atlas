@@ -23,13 +23,15 @@ export interface GraphFilters {
   edgeTypes: Set<EdgeType>;
   minConfidence: Confidence;
   showExternal: boolean;
+  showDatastores: boolean;
   search: string;
 }
 
 const DEFAULT_FILTERS: GraphFilters = {
-  edgeTypes: new Set<EdgeType>(['HTTP', 'ARTIFACT', 'MESSAGING', 'UNKNOWN']),
+  edgeTypes: new Set<EdgeType>(['HTTP', 'ARTIFACT', 'MESSAGING', 'PERSISTENCE', 'UNKNOWN']),
   minConfidence: 'LOW',
   showExternal: true,
+  showDatastores: true,
   search: '',
 };
 
@@ -55,6 +57,8 @@ export class GraphStore {
   private readonly conflictsSignal = signal<OverlayConflict[]>([]);
   private readonly pinnedSignal = signal<Record<string, { x: number; y: number }>>({});
   private readonly workspaceIdSignal = signal<number | null>(null);
+  private readonly hiddenNodeKeysSignal = signal<Set<string>>(new Set());
+  private readonly hiddenEdgeIdsSignal = signal<Set<string>>(new Set());
 
   readonly graph = this.graphSignal.asReadonly();
   readonly scanId = this.scanIdSignal.asReadonly();
@@ -84,7 +88,10 @@ export class GraphStore {
       (node.repoPath ?? '').toLowerCase().includes(search);
 
     const visibleNodes = nodes.filter(
-      (node) => (filters.showExternal || node.type !== 'EXTERNAL') && matchesSearch(node),
+      (node) =>
+        (filters.showExternal || node.type !== 'EXTERNAL') &&
+        (filters.showDatastores || node.type !== 'DATASTORE') &&
+        matchesSearch(node),
     );
     const visibleKeys = new Set(visibleNodes.map((node) => node.key));
 
@@ -101,12 +108,29 @@ export class GraphStore {
 
   readonly visibleNodeCount = computed(() => this.visibleGraph().nodes.length);
   readonly visibleEdgeCount = computed(() => this.visibleGraph().edges.length);
-  readonly hiddenNodeCount = computed(
-    () => this.graphSignal().nodes.length - this.visibleGraph().nodes.length,
-  );
-  readonly hiddenEdgeCount = computed(
-    () => this.graphSignal().edges.length - this.visibleGraph().edges.length,
-  );
+  readonly hiddenNodeCount = computed(() => this.hiddenNodeKeysSignal().size);
+  readonly hiddenEdgeCount = computed(() => this.hiddenEdgeIdsSignal().size);
+
+  readonly hiddenNodeKeys = computed(() => Array.from(this.hiddenNodeKeysSignal()));
+  readonly hiddenEdgeIds = computed(() => Array.from(this.hiddenEdgeIdsSignal()));
+
+  /** Nodes that are hidden but can be reshown (FR-4.4). */
+  readonly hiddenNodes = computed(() => {
+    const hiddenKeys = this.hiddenNodeKeysSignal();
+    const nodesByKey = new Map(this.graphSignal().nodes.map((n) => [n.key, n]));
+    return Array.from(hiddenKeys)
+      .map((key) => nodesByKey.get(key))
+      .filter((node): node is GraphNode => node !== undefined);
+  });
+
+  /** Edges that are hidden but can be reshown (FR-4.4). */
+  readonly hiddenEdges = computed(() => {
+    const hiddenIds = this.hiddenEdgeIdsSignal();
+    const edgesById = new Map(this.graphSignal().edges.map((e) => [e.id, e]));
+    return Array.from(hiddenIds)
+      .map((id) => edgesById.get(id))
+      .filter((edge): edge is GraphEdge => edge !== undefined);
+  });
 
   readonly selectedNode = computed<GraphNode | null>(() => {
     const selection = this.selectionSignal();
@@ -184,6 +208,8 @@ export class GraphStore {
     this.scanIdSignal.set(response.scanId);
     this.pinnedSignal.set(response.positions ?? {});
     this.conflictsSignal.set(response.conflicts ?? []);
+    this.hiddenNodeKeysSignal.set(new Set(response.hiddenNodes ?? []));
+    this.hiddenEdgeIdsSignal.set(new Set(response.hiddenEdges ?? []));
   }
 
   /**
@@ -252,6 +278,8 @@ export class GraphStore {
     this.scanIdSignal.set(null);
     this.conflictsSignal.set([]);
     this.pinnedSignal.set({});
+    this.hiddenNodeKeysSignal.set(new Set());
+    this.hiddenEdgeIdsSignal.set(new Set());
     this.clearSelection();
     this.filtersSignal.set({ ...DEFAULT_FILTERS, edgeTypes: new Set(DEFAULT_FILTERS.edgeTypes) });
   }
@@ -297,6 +325,11 @@ export class GraphStore {
     this.filtersSignal.update((filters) => ({ ...filters, showExternal }));
   }
 
+  /** Databases and caches are infrastructure; some readings of a diagram want them out of the way. */
+  setShowDatastores(showDatastores: boolean): void {
+    this.filtersSignal.update((filters) => ({ ...filters, showDatastores }));
+  }
+
   resetFilters(): void {
     this.filtersSignal.set({ ...DEFAULT_FILTERS, edgeTypes: new Set(DEFAULT_FILTERS.edgeTypes) });
   }
@@ -308,6 +341,7 @@ export class GraphStore {
       filters.edgeTypes.size !== DEFAULT_FILTERS.edgeTypes.size ||
       filters.minConfidence !== DEFAULT_FILTERS.minConfidence ||
       filters.showExternal !== DEFAULT_FILTERS.showExternal ||
+      filters.showDatastores !== DEFAULT_FILTERS.showDatastores ||
       filters.search.trim() !== ''
     );
   });

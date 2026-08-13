@@ -63,7 +63,6 @@ public class ScalaSbtLanguageParser implements LanguageParser {
 
         List<GraphNode> nodes = new ArrayList<>();
         nodes.add(serviceNode);
-        nodes.addAll(subModuleNodes(build, nodeKey, candidate, files));
 
         List<DependencySignal> signals = new ArrayList<>();
         List<String> warnings = new ArrayList<>(build.warnings());
@@ -84,7 +83,15 @@ public class ScalaSbtLanguageParser implements LanguageParser {
                                        String nodeKey, String serviceName, List<String> aliases) {
         Set<String> frameworks = FrameworkDetector.detectAll(build.dependencies(), files);
         List<Endpoint> endpoints = new PlayRoutesParser(files).parse();
+        // For multi-module projects, also extract endpoints from deployable sub-modules
+        for (SbtModule module : build.modules()) {
+            if (module.deployable()) {
+                endpoints.addAll(moduleEndpoints(files, module));
+            }
+        }
+        String description = extractDescription(files);
         GraphNode.Builder node = GraphNode.builder(nodeKey, serviceName, NodeType.SERVICE)
+                .description(description)
                 .endpoints(endpoints)
                 // Stored so an incremental re-scan can restore this repo's identity without
                 // re-parsing it (FR-7.3): other repos' references still have to resolve here.
@@ -165,5 +172,53 @@ public class ScalaSbtLanguageParser implements LanguageParser {
             cause = cause.getCause();
         }
         return cause.getClass().getSimpleName() + ": " + cause.getMessage();
+    }
+
+    /** Extracts service description from build.sbt or README.md. */
+    private String extractDescription(RepoFiles files) {
+        // Try to read description from a comment at the top of build.sbt
+        String buildDescription = files.readSource("build.sbt")
+                .map(source -> {
+                    for (String line : source.rawLines()) {
+                        String trimmed = line.strip();
+                        if (trimmed.startsWith("//") && trimmed.length() > 2) {
+                            String comment = trimmed.substring(2).strip();
+                            // Skip lines that are likely to be license or code comments
+                            if (!comment.isEmpty() && !comment.contains("@") && !comment.contains("http")) {
+                                return comment;
+                            }
+                        }
+                        if (!trimmed.startsWith("//") && !trimmed.isEmpty()) {
+                            // Stop at first non-comment line
+                            break;
+                        }
+                    }
+                    return null;
+                })
+                .orElse(null);
+        if (buildDescription != null && !buildDescription.isEmpty()) {
+            return buildDescription;
+        }
+        // Fallback: try to read first line from README.md
+        String readmeDescription = files.readSource("README.md")
+                .map(source -> {
+                    for (String line : source.rawLines()) {
+                        String trimmed = line.strip();
+                        // Extract from heading if it exists (prioritize headings)
+                        if (trimmed.startsWith("# ")) {
+                            return trimmed.substring(2).strip();
+                        }
+                        // Otherwise return first non-empty non-heading line
+                        if (!trimmed.isEmpty() && !trimmed.startsWith("#")) {
+                            return trimmed;
+                        }
+                    }
+                    return null;
+                })
+                .orElse(null);
+        if (readmeDescription != null) {
+            log.debug("Extracted description from README: {}", readmeDescription);
+        }
+        return readmeDescription;
     }
 }

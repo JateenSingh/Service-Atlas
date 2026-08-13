@@ -159,6 +159,14 @@
   );
 }
 
+.chip[data-type='PERSISTENCE'] .chip-swatch {
+  background: repeating-linear-gradient(
+    to right,
+    var(--edge-persistence) 0 10px,
+    transparent 10px 13px
+  );
+}
+
 .chip[data-type='MESSAGING'] .chip-swatch {
   background: repeating-linear-gradient(
     to right,

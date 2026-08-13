@@ -105,20 +105,22 @@ class ScanIntegrationTest {
     }
 
     @Test
-    @DisplayName("FR-2.4: a deployable module of a multi-module build becomes a nested node")
-    void createsSubModuleNodes() {
+    @DisplayName("FR-2.4: deployable sub-modules have their endpoints merged into the root service")
+    void mergesSubModuleEndpoints() {
         DependencyGraph graph = scanFixtures();
 
-        GraphNode api = graph.nodes().stream()
-                .filter(node -> node.type() == NodeType.SUB_MODULE)
-                .filter(node -> node.displayName().equals("log-shipment-api"))
+        GraphNode root = graph.nodes().stream()
+                .filter(node -> node.type() == NodeType.SERVICE)
+                .filter(node -> node.key().equals("logshipmentsvc"))
                 .findFirst()
                 .orElseThrow();
 
-        assertThat(api.parentKey()).isEqualTo("logshipmentsvc");
-        assertThat(api.repoPath()).isEqualTo("log-shipment-svc/modules/api");
+        assertThat(root.endpoints())
+                .as("root service should have endpoints from sub-modules")
+                .isNotEmpty();
+
         assertThat(graph.nodes())
-                .as("the library-only module is not promoted to a node")
+                .as("library-only modules are not promoted to nodes")
                 .extracting(GraphNode::displayName)
                 .doesNotContain("log-shipment-domain");
     }

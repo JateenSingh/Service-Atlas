@@ -59,7 +59,8 @@ public class GraphService {
     private GraphView view(Long workspaceId, Long scanId, DependencyGraph parsed) {
         OverlaySet overlay = overlays.load(workspaceId);
         OverlayMerger.MergeResult merged = OverlayMerger.merge(parsed, overlay);
-        return new GraphView(scanId, merged.graph(), overlay.positions(), merged.conflicts());
+        return new GraphView(scanId, merged.graph(), overlay.positions(), merged.conflicts(),
+                List.copyOf(overlay.hiddenNodes()), List.copyOf(overlay.hiddenEdges()));
     }
 
     /**
@@ -67,11 +68,15 @@ public class GraphService {
      * @param graph     parser output with the overlay applied
      * @param positions user-pinned node positions (FR-5.3)
      * @param conflicts disagreements between the newest parse and the overlay (FR-4.4)
+     * @param hiddenNodes node keys currently hidden in the overlay (FR-4.4)
+     * @param hiddenEdges edge ids currently hidden in the overlay (FR-4.4)
      */
     public record GraphView(
             Long scanId,
             DependencyGraph graph,
             Map<String, OverlaySet.Position> positions,
-            List<OverlayMerger.Conflict> conflicts) {
+            List<OverlayMerger.Conflict> conflicts,
+            List<String> hiddenNodes,
+            List<String> hiddenEdges) {
     }
 }

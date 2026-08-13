@@ -19,6 +19,7 @@ public record DiagramPalette(
         String textMuted,
         String external,
         String topic,
+        String datastore,
         Map<String, String> frameworks,
         Map<EdgeType, String> edges) {
 
@@ -30,6 +31,7 @@ public record DiagramPalette(
             "#8496a6",
             "#64748b",
             "#f472b6",
+            "#22d3ee",
             Map.of(
                     "Play Framework", "#4ade80",
                     "Akka HTTP", "#c084fc",
@@ -41,6 +43,7 @@ public record DiagramPalette(
                     EdgeType.HTTP, "#60a5fa",
                     EdgeType.ARTIFACT, "#a3a3a3",
                     EdgeType.MESSAGING, "#f472b6",
+                    EdgeType.PERSISTENCE, "#22d3ee",
                     EdgeType.UNKNOWN, "#737373"));
 
     public static final DiagramPalette LIGHT = new DiagramPalette(
@@ -51,6 +54,7 @@ public record DiagramPalette(
             "#6b7c8d",
             "#475569",
             "#db2777",
+            "#0e7490",
             Map.of(
                     "Play Framework", "#16a34a",
                     "Akka HTTP", "#7c3aed",
@@ -62,6 +66,7 @@ public record DiagramPalette(
                     EdgeType.HTTP, "#1d6fe0",
                     EdgeType.ARTIFACT, "#64748b",
                     EdgeType.MESSAGING, "#db2777",
+                    EdgeType.PERSISTENCE, "#0e7490",
                     EdgeType.UNKNOWN, "#94a3b8"));
 
     public static DiagramPalette forView(DiagramView view) {
@@ -71,6 +76,7 @@ public record DiagramPalette(
     public String nodeColour(GraphNode node) {
         return switch (node.type()) {
             case TOPIC -> topic;
+            case DATASTORE -> datastore;
             case EXTERNAL -> external;
             default -> frameworks.getOrDefault(
                     node.framework() == null ? "Unknown" : node.framework(),
@@ -88,6 +94,8 @@ public record DiagramPalette(
             case MESSAGING -> new float[] {8f, 5f};
             case ARTIFACT -> new float[] {2f, 4f};
             case UNKNOWN -> new float[] {4f, 4f};
+            // Long dash with a gap: reads as a link to storage rather than a call.
+            case PERSISTENCE -> new float[] {10f, 3f};
             case HTTP -> null;
         };
     }

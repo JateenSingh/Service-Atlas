@@ -45,8 +45,18 @@
       }
     </button>
 
+    @if (graphStore.hiddenNodeCount() > 0 || graphStore.hiddenEdgeCount() > 0) {
+      <button
+        class="btn"
+        type="button"
+        (click)="showAll()"
+      >
+        Show all hidden
+      </button>
+    }
+
     <div class="toolbar-stats mono">
-      {{ graphStore.visibleNodeCount() }} services · {{ graphStore.visibleEdgeCount() }} dependencies
+      {{ graphStore.visibleNodeCount() }} nodes · {{ graphStore.visibleEdgeCount() }} dependencies
       @if (graphStore.hiddenNodeCount() > 0 || graphStore.hiddenEdgeCount() > 0) {
         <span class="muted">
           ({{ graphStore.hiddenNodeCount() }}/{{ graphStore.hiddenEdgeCount() }} hidden)
@@ -114,9 +124,23 @@
         </button>
       </div>
 
+      <div class="filter-group">
+        <span class="filter-label">Datastores</span>
+        <button
+          class="chip"
+          type="button"
+          [class.on]="graphStore.filters().showDatastores"
+          (click)="toggleDatastores()"
+          [attr.aria-pressed]="graphStore.filters().showDatastores"
+        >
+          {{ graphStore.filters().showDatastores ? 'Shown' : 'Hidden' }}
+        </button>
+      </div>
+
       <button class="btn btn-ghost" type="button" (click)="resetFilters()">Reset filters</button>
     </div>
   }
+
 
   @if (graphStore.conflicts().length > 0 && conflictsVisible()) {
     <!-- FR-4.4: where the newest scan and your edits disagree, say so rather than pick one. -->

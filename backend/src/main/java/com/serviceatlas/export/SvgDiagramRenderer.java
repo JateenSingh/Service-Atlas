@@ -121,7 +121,29 @@ public class SvgDiagramRenderer {
         StringBuilder svg = new StringBuilder("<g transform=\"translate(")
                 .append(round(x)).append(',').append(round(y)).append(")\">");
 
-        if (node.type() == NodeType.TOPIC) {
+        if (node.type() == NodeType.DATASTORE) {
+            // Storage cylinder: a rounded body plus an ellipse cap.
+            double cap = Math.min(18, box.height() / 3.2);
+            svg.append("<path d=\"M 0 ").append(round(cap / 2))
+                    .append(" a ").append(round(box.width() / 2)).append(' ').append(round(cap / 2))
+                    .append(" 0 0 1 ").append(round(box.width())).append(" 0")
+                    .append(" v ").append(round(box.height() - cap))
+                    .append(" a ").append(round(box.width() / 2)).append(' ').append(round(cap / 2))
+                    .append(" 0 0 1 -").append(round(box.width())).append(" 0 z\"")
+                    .append(" fill=\"").append(palette.surface()).append("\" stroke=\"")
+                    .append(palette.datastore()).append("\" stroke-width=\"1.2\"/>")
+                    .append("<ellipse cx=\"").append(round(box.width() / 2)).append("\" cy=\"")
+                    .append(round(cap / 2)).append("\" rx=\"").append(round(box.width() / 2))
+                    .append("\" ry=\"").append(round(cap / 2)).append("\" fill=\"")
+                    .append(palette.surface()).append("\" stroke=\"").append(palette.datastore())
+                    .append("\" stroke-width=\"1.2\"/>")
+                    .append("<text x=\"14\" y=\"").append(round(cap + 20)).append("\" fill=\"")
+                    .append(palette.text()).append("\" font-size=\"12.5\" font-weight=\"600\">")
+                    .append(escape(node.displayName())).append("</text>")
+                    .append("<text x=\"14\" y=\"").append(round(cap + 34)).append("\" fill=\"")
+                    .append(palette.datastore()).append("\" font-size=\"10\">")
+                    .append(escape(subtitle(node))).append("</text>");
+        } else if (node.type() == NodeType.TOPIC) {
             svg.append("<rect width=\"").append(round(box.width())).append("\" height=\"")
                     .append(round(box.height())).append("\" rx=\"").append(round(box.height() / 2))
                     .append("\" fill=\"").append(palette.surface()).append("\" stroke=\"")
@@ -159,6 +181,8 @@ public class SvgDiagramRenderer {
                 new String[] {"HTTP call", palette.edgeColour(EdgeType.HTTP), null},
                 new String[] {"Messaging", palette.edgeColour(EdgeType.MESSAGING),
                         DiagramPalette.dashArrayFor(EdgeType.MESSAGING)},
+                new String[] {"Datastore", palette.edgeColour(EdgeType.PERSISTENCE),
+                        DiagramPalette.dashArrayFor(EdgeType.PERSISTENCE)},
                 new String[] {"Build dependency", palette.edgeColour(EdgeType.ARTIFACT),
                         DiagramPalette.dashArrayFor(EdgeType.ARTIFACT)});
 
@@ -186,6 +210,7 @@ public class SvgDiagramRenderer {
             case EXTERNAL -> "external";
             case SUB_MODULE -> "module";
             case TOPIC -> "topic";
+            case DATASTORE -> String.valueOf(node.metadata().getOrDefault("engine", "datastore"));
             case SERVICE -> node.framework() == null || node.framework().equals("Unknown")
                     ? "service"
                     : node.framework();

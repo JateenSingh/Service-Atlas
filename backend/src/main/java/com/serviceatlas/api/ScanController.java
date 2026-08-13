@@ -33,12 +33,12 @@ public class ScanController {
     /**
      * Triggers an asynchronous scan and returns immediately with the new scan id (FR-7.1).
      *
-     * @param force re-parse everything instead of reusing unchanged repositories (FR-7.3)
+     * @param force re-parse everything instead of reusing unchanged repositories (FR-7.3, default: true)
      */
     @PostMapping
     public ResponseEntity<ScanSummary> start(
             @PathVariable Long workspaceId,
-            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "false") boolean force) {
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "true") boolean force) {
         ScanEntity scan = scans.startScan(workspaceId, force);
         return ResponseEntity
                 .accepted()

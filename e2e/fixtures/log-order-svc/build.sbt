@@ -1,3 +1,4 @@
+// Manages order lifecycle from initial request through fulfillment, including inventory coordination and shipping
 name := "log-order-svc"
 organization := "com.acme.logistics"
 version := "3.2.1"

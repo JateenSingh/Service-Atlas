@@ -8,3 +8,4 @@ libraryDependencies ++= Seq(
   "com.typesafe.play" %% "play-slick" % "5.3.1",
   "org.postgresql"     % "postgresql" % "42.7.3"
 )
+

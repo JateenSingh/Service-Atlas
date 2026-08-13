@@ -80,6 +80,14 @@ public final class ConfigReferenceScanner implements ScalaSignalScanner {
     private java.util.Optional<DependencySignal> referenceSignal(
             ScalaScanContext context, ConfigValues.Entry entry, List<String> tokens) {
         String value = entry.value().strip();
+
+        // A datastore connection string is a URL too, and DatastoreScanner owns it. Without this,
+        // "mongodb://inventory-db/inventory" would be drawn twice: once as a database and once as
+        // an external HTTP service called inventory-db.
+        if (ConnectionStrings.parse(value).isPresent()) {
+            return java.util.Optional.empty();
+        }
+
         boolean urlShaped = URL_VALUE.matcher(value).matches();
         boolean hostShaped = !urlShaped && HOST_VALUE.matcher(value).matches() && value.contains("-");
 

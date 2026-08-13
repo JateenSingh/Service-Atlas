@@ -115,6 +115,21 @@
   stroke-dasharray: 3 2;
 }
 
+/* Datastores: a cylinder outlined in the storage accent, filled like a service card. */
+.node.datastore .node-body {
+  fill: var(--bg-surface);
+  stroke: var(--fw-datastore);
+  stroke-width: 1.2;
+}
+
+.node.datastore .node-cap {
+  fill: color-mix(in srgb, var(--fw-datastore) 10%, var(--bg-surface));
+}
+
+.node.datastore .node-name {
+  font-size: 12.5px;
+}
+
 .node-name {
   font-family: var(--font-sans);
   font-size: 13.5px;

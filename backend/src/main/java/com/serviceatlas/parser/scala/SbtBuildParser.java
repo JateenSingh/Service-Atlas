@@ -167,8 +167,12 @@ public final class SbtBuildParser {
             for (TextSource.Match match : source.matches(MODULE)) {
                 String id = match.group(1);
                 String path = match.group(2);
-                if (path == null || path.equals(".") || id == null) {
-                    continue; // the root project, or a Project(...) form without a directory
+                if (path == null || path.equals(".")) {
+                    if (id == null || path != null && path.equals(".")) {
+                        continue; // the root project or a Project(...) form without a directory
+                    }
+                    // SBT by convention uses the module ID as the directory when no explicit path is given
+                    path = id;
                 }
                 String moduleName = moduleName(source, match.line(), id);
                 boolean deployable = isDeployableModule(path);

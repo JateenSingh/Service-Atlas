@@ -92,8 +92,9 @@ public class PngDiagramRenderer {
         List<com.serviceatlas.graph.model.EdgeType> types = List.of(
                 com.serviceatlas.graph.model.EdgeType.HTTP,
                 com.serviceatlas.graph.model.EdgeType.MESSAGING,
+                com.serviceatlas.graph.model.EdgeType.PERSISTENCE,
                 com.serviceatlas.graph.model.EdgeType.ARTIFACT);
-        List<String> labels = List.of("HTTP call", "Messaging", "Build dependency");
+        List<String> labels = List.of("HTTP call", "Messaging", "Datastore", "Build dependency");
 
         graphics.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
         for (int i = 0; i < types.size(); i++) {
@@ -170,6 +171,12 @@ public class PngDiagramRenderer {
     private void drawNode(Graphics2D graphics, GraphNode node, DiagramView.Box box, DiagramPalette palette) {
         boolean topic = node.type() == NodeType.TOPIC;
         boolean external = node.type() == NodeType.EXTERNAL;
+        boolean datastore = node.type() == NodeType.DATASTORE;
+        // A datastore gets the cylinder every architecture diagram uses for storage.
+        if (datastore) {
+            drawCylinder(graphics, node, box, palette);
+            return;
+        }
         double arc = topic ? box.height() : 10;
 
         RoundRectangle2D shape = new RoundRectangle2D.Double(
@@ -205,11 +212,45 @@ public class PngDiagramRenderer {
         }
     }
 
+    /** The storage cylinder: a rounded body with an ellipse cap, which reads instantly as a store. */
+    private void drawCylinder(Graphics2D graphics, GraphNode node, DiagramView.Box box,
+                              DiagramPalette palette) {
+        double capHeight = Math.min(18, box.height() / 3.2);
+        java.awt.Color accent = colour(palette.datastore());
+
+        java.awt.geom.Area body = new java.awt.geom.Area(new java.awt.geom.Rectangle2D.Double(
+                box.x(), box.y() + capHeight / 2, box.width(), box.height() - capHeight));
+        body.add(new java.awt.geom.Area(new java.awt.geom.Ellipse2D.Double(
+                box.x(), box.y() + box.height() - capHeight, box.width(), capHeight)));
+
+        graphics.setColor(colour(palette.surface()));
+        graphics.fill(body);
+        graphics.setStroke(new BasicStroke(1.2f));
+        graphics.setColor(accent);
+        graphics.draw(body);
+
+        java.awt.geom.Ellipse2D cap =
+                new java.awt.geom.Ellipse2D.Double(box.x(), box.y(), box.width(), capHeight);
+        graphics.setColor(colour(palette.surface()));
+        graphics.fill(cap);
+        graphics.setColor(accent);
+        graphics.draw(cap);
+
+        graphics.setColor(colour(palette.text()));
+        graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 12));
+        graphics.drawString(node.displayName(), (float) box.x() + 14, (float) (box.y() + capHeight + 20));
+
+        graphics.setColor(accent);
+        graphics.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
+        graphics.drawString(subtitle(node), (float) box.x() + 14, (float) (box.y() + capHeight + 34));
+    }
+
     private static String subtitle(GraphNode node) {
         return switch (node.type()) {
             case EXTERNAL -> "external";
             case SUB_MODULE -> "module";
             case TOPIC -> "topic";
+            case DATASTORE -> String.valueOf(node.metadata().getOrDefault("engine", "datastore"));
             case SERVICE -> node.framework() == null || node.framework().equals("Unknown")
                     ? "service"
                     : node.framework();

@@ -6,6 +6,7 @@ import com.serviceatlas.graph.model.EdgeType;
 import com.serviceatlas.graph.model.GraphEdge;
 import com.serviceatlas.graph.model.GraphNode;
 import com.serviceatlas.graph.model.NodeType;
+import com.serviceatlas.parser.DatastoreRef;
 import com.serviceatlas.parser.DependencySignal;
 import com.serviceatlas.parser.ParsedRepo;
 import com.serviceatlas.parser.common.NameNormalizer;
@@ -58,7 +59,9 @@ public class GraphBuilder {
         Map<String, GraphEdge> edges = new LinkedHashMap<>();
         for (ParsedRepo repo : parsedRepos) {
             for (DependencySignal signal : repo.signals()) {
-                if (signal.isMessaging()) {
+                if (signal.isPersistence()) {
+                    addPersistenceEdge(signal, nodes, edges);
+                } else if (signal.isMessaging()) {
                     addMessagingEdges(signal, nodes, edges);
                 } else {
                     addDependencyEdge(signal, aliases, nodes, edges);
@@ -96,11 +99,62 @@ public class GraphBuilder {
                 List.of(signal.evidence())));
     }
 
+    /**
+     * A service reading or writing a datastore.
+     *
+     * <p>Always drawn service → datastore. Direction of data flow is not something static analysis
+     * can tell from a connection string, and inventing an arrow per read or write would claim more
+     * than the evidence supports.
+     */
+    private void addPersistenceEdge(DependencySignal signal, Map<String, GraphNode> nodes,
+                                    Map<String, GraphEdge> edges) {
+        DatastoreRef datastore = signal.datastore();
+        String key = datastoreNode(datastore, nodes);
+
+        putEdge(edges, new GraphEdge(
+                null,
+                signal.sourceNodeKey(),
+                key,
+                EdgeType.PERSISTENCE,
+                signal.confidence(),
+                datastore.engine(),
+                List.of(signal.evidence())));
+    }
+
+    private String datastoreNode(DatastoreRef datastore, Map<String, GraphNode> nodes) {
+        String key = datastore.nodeKey();
+        GraphNode existing = nodes.get(key);
+        if (existing == null) {
+            nodes.put(key, GraphNode.builder(key, datastore.displayName(), NodeType.DATASTORE)
+                    .metadata("engine", datastore.engine())
+                    .metadata("database", datastore.database())
+                    .metadata("host", datastore.host())
+                    .metadata("localOnly", datastore.isLocalOnly() ? true : null)
+                    .build());
+            return key;
+        }
+        // A second service naming the same store may know a host the first one did not.
+        if (datastore.host() != null && !existing.metadata().containsKey("host")) {
+            Map<String, Object> metadata = new LinkedHashMap<>(existing.metadata());
+            metadata.put("host", datastore.host());
+            nodes.put(key, withMetadata(existing, metadata));
+        }
+        return key;
+    }
+
+    private static GraphNode withMetadata(GraphNode node, Map<String, Object> metadata) {
+        return new GraphNode(
+                node.key(), node.displayName(), node.type(), node.framework(), node.scalaVersion(),
+                node.sbtVersion(), node.repoPath(), node.parentKey(), node.description(),
+                node.endpoints(), node.warnings(), metadata);
+    }
+
     /** FR-3.6 — producer → topic → consumer, with the topic as its own node. */
     private void addMessagingEdges(DependencySignal signal, Map<String, GraphNode> nodes,
                                    Map<String, GraphEdge> edges) {
-        String topicKey = topicNode(signal.topicName(), nodes);
-        boolean producing = signal.source() == com.serviceatlas.graph.model.SignalSource.MESSAGING_PRODUCER;
+        String topicKey = topicNode(signal.topicName(), nodes, brokerOf(signal.source()));
+        boolean producing = signal.source() == com.serviceatlas.graph.model.SignalSource.MESSAGING_PRODUCER
+                || signal.source() == com.serviceatlas.graph.model.SignalSource.PUBSUB_PUBLISHER;
 
         String source = producing ? signal.sourceNodeKey() : topicKey;
         String target = producing ? topicKey : signal.sourceNodeKey();
@@ -123,12 +177,32 @@ public class GraphBuilder {
         return key;
     }
 
-    private String topicNode(String topicName, Map<String, GraphNode> nodes) {
+    private String topicNode(String topicName, Map<String, GraphNode> nodes, String broker) {
         String key = "topic:" + NameNormalizer.canonical(topicName);
-        nodes.computeIfAbsent(key, k -> GraphNode.builder(k, topicName, NodeType.TOPIC)
-                .metadata("topic", topicName)
-                .build());
+        GraphNode existing = nodes.get(key);
+        if (existing == null) {
+            nodes.put(key, GraphNode.builder(key, topicName, NodeType.TOPIC)
+                    .metadata("topic", topicName)
+                    .metadata("broker", broker)
+                    .build());
+            return key;
+        }
+        // The same topic can be seen first through a generic messaging signal and only later
+        // through one that knows the technology; the more specific answer wins.
+        if (broker != null && !existing.metadata().containsKey("broker")) {
+            Map<String, Object> metadata = new LinkedHashMap<>(existing.metadata());
+            metadata.put("broker", broker);
+            nodes.put(key, withMetadata(existing, metadata));
+        }
         return key;
+    }
+
+    /** Which messaging technology a signal came from, for the inspector and the node label. */
+    private static String brokerOf(com.serviceatlas.graph.model.SignalSource source) {
+        return switch (source) {
+            case PUBSUB_PUBLISHER, PUBSUB_SUBSCRIBER -> "Google Pub/Sub";
+            default -> null;
+        };
     }
 
     /**
@@ -187,6 +261,35 @@ public class GraphBuilder {
             putEdge(edges, edge);
         }
         return new DependencyGraph(graph.nodes(), List.copyOf(edges.values())).pruneDanglingEdges();
+    }
+
+    /**
+     * Adds infrastructure nodes (datastores, topics, external services) and their edges from
+     * previous scans back into the graph. These are lost during content-hash-based reuse since
+     * they have no repository association, but they should be preserved across rescans.
+     */
+    public DependencyGraph withInfrastructureNodes(DependencyGraph graph, List<GraphNode> infrastructure,
+                                                    List<GraphEdge> infrastructureEdges) {
+        if (infrastructure.isEmpty()) {
+            return graph;
+        }
+        Map<String, GraphNode> nodes = new LinkedHashMap<>();
+        for (GraphNode node : graph.nodes()) {
+            nodes.putIfAbsent(node.key(), node);
+        }
+        for (GraphNode node : infrastructure) {
+            nodes.putIfAbsent(node.key(), node);
+        }
+
+        Map<String, GraphEdge> edges = new LinkedHashMap<>();
+        for (GraphEdge edge : graph.edges()) {
+            edges.put(edge.id(), edge);
+        }
+        for (GraphEdge edge : infrastructureEdges) {
+            putEdge(edges, edge);
+        }
+
+        return new DependencyGraph(List.copyOf(nodes.values()), List.copyOf(edges.values()));
     }
 
     /**

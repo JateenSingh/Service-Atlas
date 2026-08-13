@@ -53,7 +53,7 @@ public class GraphStore {
             entity.setRepoPath(node.repoPath());
             entity.setParentKey(node.parentKey());
             entity.setMetadataJson(writeJson(
-                    new NodePayload(node.metadata(), node.endpoints(), node.warnings())));
+                    new NodePayload(node.metadata(), node.endpoints(), node.warnings(), node.description())));
             nodeEntities.add(entity);
         }
         nodes.saveAll(nodeEntities);
@@ -83,6 +83,7 @@ public class GraphStore {
                     entity.getSbtVersion(),
                     entity.getRepoPath(),
                     entity.getParentKey(),
+                    payload.description(),
                     payload.endpoints(),
                     payload.warnings(),
                     payload.metadata()));
@@ -136,9 +137,9 @@ public class GraphStore {
         }
     }
 
-    /** The three node fields that share {@code metadata_json}. */
+    /** The node fields that share {@code metadata_json}: metadata, endpoints, warnings, and description. */
     public record NodePayload(
-            Map<String, Object> metadata, List<Endpoint> endpoints, List<String> warnings) {
+            Map<String, Object> metadata, List<Endpoint> endpoints, List<String> warnings, String description) {
 
         public NodePayload {
             metadata = metadata == null ? Map.of() : metadata;
@@ -147,7 +148,7 @@ public class GraphStore {
         }
 
         static NodePayload empty() {
-            return new NodePayload(Map.of(), List.of(), List.of());
+            return new NodePayload(Map.of(), List.of(), List.of(), null);
         }
     }
 }
