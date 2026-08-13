@@ -41,7 +41,6 @@ export class CanvasPageComponent {
 
   readonly sidebarCollapsed = signal(false);
   readonly filtersOpen = signal(false);
-  readonly hiddenOpen = signal(false);
   readonly conflictsVisible = signal(true);
 
   /** The service list mirrors the filtered view, so what is listed is what is drawn. */
@@ -117,18 +116,6 @@ export class CanvasPageComponent {
     this.filtersOpen.update((open) => !open);
   }
 
-  toggleHidden(): void {
-    this.hiddenOpen.update((open) => !open);
-  }
-
-  async showNode(key: string): Promise<void> {
-    await this.graphStore.unhideNode(key);
-  }
-
-  async showEdge(id: string): Promise<void> {
-    await this.graphStore.unhideEdge(id);
-  }
-
   async showAll(): Promise<void> {
     const hiddenNodes = this.graphStore.hiddenNodes();
     const hiddenEdges = this.graphStore.hiddenEdges();
@@ -138,14 +125,6 @@ export class CanvasPageComponent {
     for (const edge of hiddenEdges) {
       await this.graphStore.unhideEdge(edge.id);
     }
-  }
-
-  selectNode(node: GraphNode): void {
-    this.graphStore.selectNode(node.key);
-  }
-
-  nodeDisplayName(key: string): string {
-    return this.graphStore.nodesByKey().get(key)?.displayName ?? key;
   }
 
   dismissConflicts(): void {

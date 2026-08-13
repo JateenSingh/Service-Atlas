@@ -49,11 +49,9 @@
       <button
         class="btn"
         type="button"
-        (click)="toggleHidden()"
-        [attr.aria-expanded]="hiddenOpen()"
+        (click)="showAll()"
       >
-        Show hidden
-        <span class="filter-dot" aria-hidden="true"></span>
+        Show all hidden
       </button>
     }
 
@@ -143,61 +141,6 @@
     </div>
   }
 
-  @if (hiddenOpen()) {
-    <!-- FR-4.4: show hidden nodes and edges that can be reshown. -->
-    <div class="hidden-items" role="region" aria-label="Hidden items">
-      @if (graphStore.hiddenNodes().length > 0) {
-        <div class="hidden-group">
-          <span class="hidden-label">Hidden nodes ({{ graphStore.hiddenNodes().length }})</span>
-          <ul class="hidden-list">
-            @for (node of graphStore.hiddenNodes(); track node.key) {
-              <li class="hidden-item">
-                <button
-                  class="hidden-item-label"
-                  type="button"
-                  (click)="selectNode(node)"
-                  [attr.data-type]="node.type"
-                >
-                  {{ node.displayName }}
-                </button>
-                <button
-                  class="btn btn-sm"
-                  type="button"
-                  (click)="showNode(node.key)"
-                  title="Unhide this node"
-                >
-                  Show
-                </button>
-              </li>
-            }
-          </ul>
-        </div>
-      }
-      @if (graphStore.hiddenEdges().length > 0) {
-        <div class="hidden-group">
-          <span class="hidden-label">Hidden dependencies ({{ graphStore.hiddenEdges().length }})</span>
-          <ul class="hidden-list">
-            @for (edge of graphStore.hiddenEdges(); track edge.id) {
-              <li class="hidden-item">
-                <span class="hidden-item-label mono muted">
-                  {{ nodeDisplayName(edge.sourceKey) }} → {{ nodeDisplayName(edge.targetKey) }}
-                </span>
-                <button
-                  class="btn btn-sm"
-                  type="button"
-                  (click)="showEdge(edge.id)"
-                  title="Unhide this dependency"
-                >
-                  Show
-                </button>
-              </li>
-            }
-          </ul>
-        </div>
-      }
-      <button class="btn btn-ghost btn-sm" type="button" (click)="showAll()">Show all hidden</button>
-    </div>
-  }
 
   @if (graphStore.conflicts().length > 0 && conflictsVisible()) {
     <!-- FR-4.4: where the newest scan and your edits disagree, say so rather than pick one. -->
