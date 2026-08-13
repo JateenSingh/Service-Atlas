@@ -111,6 +111,9 @@ export class GraphStore {
   readonly hiddenNodeCount = computed(() => this.hiddenNodeKeysSignal().size);
   readonly hiddenEdgeCount = computed(() => this.hiddenEdgeIdsSignal().size);
 
+  readonly hiddenNodeKeys = computed(() => Array.from(this.hiddenNodeKeysSignal()));
+  readonly hiddenEdgeIds = computed(() => Array.from(this.hiddenEdgeIdsSignal()));
+
   /** Nodes that are hidden but can be reshown (FR-4.4). */
   readonly hiddenNodes = computed(() => {
     const hiddenKeys = this.hiddenNodeKeysSignal();

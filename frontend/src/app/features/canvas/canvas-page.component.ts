@@ -117,13 +117,11 @@ export class CanvasPageComponent {
   }
 
   async showAll(): Promise<void> {
-    const hiddenNodes = this.graphStore.hiddenNodes();
-    const hiddenEdges = this.graphStore.hiddenEdges();
-    for (const node of hiddenNodes) {
-      await this.graphStore.unhideNode(node.key);
+    for (const key of this.graphStore.hiddenNodeKeys()) {
+      await this.graphStore.unhideNode(key);
     }
-    for (const edge of hiddenEdges) {
-      await this.graphStore.unhideEdge(edge.id);
+    for (const id of this.graphStore.hiddenEdgeIds()) {
+      await this.graphStore.unhideEdge(id);
     }
   }
 
