@@ -189,9 +189,12 @@ export class GraphStore {
     this.errorSignal.set(null);
     this.workspaceIdSignal.set(workspaceId);
     try {
-      this.accept(await firstValueFrom(this.api.getGraph(workspaceId)));
+      const response = await firstValueFrom(this.api.getGraph(workspaceId));
+      console.debug('API response received:', response);
+      this.accept(response);
       this.clearSelection();
     } catch (problem) {
+      console.error('Error loading graph:', problem);
       this.errorSignal.set(problemMessage(problem));
       this.graphSignal.set({ nodes: [], edges: [] });
     } finally {
@@ -223,8 +226,11 @@ export class GraphStore {
     }
     this.errorSignal.set(null);
     try {
-      this.accept(await firstValueFrom(this.api.patchOverlay(workspaceId, patch)));
+      const response = await firstValueFrom(this.api.patchOverlay(workspaceId, patch));
+      console.debug('Patch response received:', response);
+      this.accept(response);
     } catch (problem) {
+      console.error('Error applying patch:', problem);
       this.errorSignal.set(problemMessage(problem));
     }
   }
