@@ -200,20 +200,25 @@ public class ScalaSbtLanguageParser implements LanguageParser {
             return buildDescription;
         }
         // Fallback: try to read first line from README.md
-        return files.readSource("README.md")
+        String readmeDescription = files.readSource("README.md")
                 .map(source -> {
                     for (String line : source.rawLines()) {
                         String trimmed = line.strip();
-                        if (!trimmed.isEmpty() && !trimmed.startsWith("#")) {
-                            return trimmed;
-                        }
-                        // Extract from heading if it exists
+                        // Extract from heading if it exists (prioritize headings)
                         if (trimmed.startsWith("# ")) {
                             return trimmed.substring(2).strip();
+                        }
+                        // Otherwise return first non-empty non-heading line
+                        if (!trimmed.isEmpty() && !trimmed.startsWith("#")) {
+                            return trimmed;
                         }
                     }
                     return null;
                 })
                 .orElse(null);
+        if (readmeDescription != null) {
+            log.debug("Extracted description from README: {}", readmeDescription);
+        }
+        return readmeDescription;
     }
 }
