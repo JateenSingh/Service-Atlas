@@ -57,6 +57,8 @@ export class GraphStore {
   private readonly conflictsSignal = signal<OverlayConflict[]>([]);
   private readonly pinnedSignal = signal<Record<string, { x: number; y: number }>>({});
   private readonly workspaceIdSignal = signal<number | null>(null);
+  private readonly hiddenNodeKeysSignal = signal<Set<string>>(new Set());
+  private readonly hiddenEdgeIdsSignal = signal<Set<string>>(new Set());
 
   readonly graph = this.graphSignal.asReadonly();
   readonly scanId = this.scanIdSignal.asReadonly();
@@ -106,25 +108,25 @@ export class GraphStore {
 
   readonly visibleNodeCount = computed(() => this.visibleGraph().nodes.length);
   readonly visibleEdgeCount = computed(() => this.visibleGraph().edges.length);
-  readonly hiddenNodeCount = computed(
-    () => this.graphSignal().nodes.length - this.visibleGraph().nodes.length,
-  );
-  readonly hiddenEdgeCount = computed(
-    () => this.graphSignal().edges.length - this.visibleGraph().edges.length,
-  );
+  readonly hiddenNodeCount = computed(() => this.hiddenNodeKeysSignal().size);
+  readonly hiddenEdgeCount = computed(() => this.hiddenEdgeIdsSignal().size);
 
   /** Nodes that are hidden but can be reshown (FR-4.4). */
   readonly hiddenNodes = computed(() => {
-    const all = new Set(this.graphSignal().nodes.map((n) => n.key));
-    const visible = new Set(this.visibleGraph().nodes.map((n) => n.key));
-    return this.graphSignal().nodes.filter((node) => all.has(node.key) && !visible.has(node.key));
+    const hiddenKeys = this.hiddenNodeKeysSignal();
+    const nodesByKey = new Map(this.graphSignal().nodes.map((n) => [n.key, n]));
+    return Array.from(hiddenKeys)
+      .map((key) => nodesByKey.get(key))
+      .filter((node): node is GraphNode => node !== undefined);
   });
 
   /** Edges that are hidden but can be reshown (FR-4.4). */
   readonly hiddenEdges = computed(() => {
-    const all = new Set(this.graphSignal().edges.map((e) => e.id));
-    const visible = new Set(this.visibleGraph().edges.map((e) => e.id));
-    return this.graphSignal().edges.filter((edge) => all.has(edge.id) && !visible.has(edge.id));
+    const hiddenIds = this.hiddenEdgeIdsSignal();
+    const edgesById = new Map(this.graphSignal().edges.map((e) => [e.id, e]));
+    return Array.from(hiddenIds)
+      .map((id) => edgesById.get(id))
+      .filter((edge): edge is GraphEdge => edge !== undefined);
   });
 
   readonly selectedNode = computed<GraphNode | null>(() => {
@@ -203,6 +205,8 @@ export class GraphStore {
     this.scanIdSignal.set(response.scanId);
     this.pinnedSignal.set(response.positions ?? {});
     this.conflictsSignal.set(response.conflicts ?? []);
+    this.hiddenNodeKeysSignal.set(new Set(response.hiddenNodes ?? []));
+    this.hiddenEdgeIdsSignal.set(new Set(response.hiddenEdges ?? []));
   }
 
   /**
@@ -271,6 +275,8 @@ export class GraphStore {
     this.scanIdSignal.set(null);
     this.conflictsSignal.set([]);
     this.pinnedSignal.set({});
+    this.hiddenNodeKeysSignal.set(new Set());
+    this.hiddenEdgeIdsSignal.set(new Set());
     this.clearSelection();
     this.filtersSignal.set({ ...DEFAULT_FILTERS, edgeTypes: new Set(DEFAULT_FILTERS.edgeTypes) });
   }

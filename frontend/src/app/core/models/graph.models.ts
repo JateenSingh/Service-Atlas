@@ -87,6 +87,10 @@ export interface GraphResponse {
   positions: Record<string, { x: number; y: number }>;
   /** Disagreements between the newest scan and the stored overlay (FR-4.4). */
   conflicts: OverlayConflict[];
+  /** Node keys currently hidden in the overlay (FR-4.4). */
+  hiddenNodes?: string[];
+  /** Edge ids currently hidden in the overlay (FR-4.4). */
+  hiddenEdges?: string[];
 }
 
 export type ConflictKind =
