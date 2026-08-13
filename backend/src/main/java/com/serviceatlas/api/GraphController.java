@@ -52,6 +52,8 @@ public class GraphController {
      * @param scanId    which scan produced this graph, null if the workspace has never been scanned
      * @param positions user-pinned node positions
      * @param conflicts overlay/parser disagreements worth surfacing (FR-4.4)
+     * @param hiddenNodes node keys currently hidden in the overlay (FR-4.4)
+     * @param hiddenEdges edge ids currently hidden in the overlay (FR-4.4)
      */
     public record GraphResponse(
             Long scanId,
@@ -59,7 +61,9 @@ public class GraphController {
             int edgeCount,
             DependencyGraph graph,
             Map<String, OverlaySet.Position> positions,
-            List<OverlayMerger.Conflict> conflicts) {
+            List<OverlayMerger.Conflict> conflicts,
+            List<String> hiddenNodes,
+            List<String> hiddenEdges) {
 
         static GraphResponse of(GraphService.GraphView view) {
             return new GraphResponse(
@@ -68,7 +72,9 @@ public class GraphController {
                     view.graph().edgeCount(),
                     view.graph(),
                     view.positions(),
-                    view.conflicts());
+                    view.conflicts(),
+                    view.hiddenNodes(),
+                    view.hiddenEdges());
         }
     }
 }
