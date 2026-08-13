@@ -264,11 +264,12 @@ public class GraphBuilder {
     }
 
     /**
-     * Adds infrastructure nodes (datastores, topics, external services) from previous scans back
-     * into the graph. These nodes are lost during content-hash-based reuse since they have no
-     * repository association, but they should be preserved across rescans.
+     * Adds infrastructure nodes (datastores, topics, external services) and their edges from
+     * previous scans back into the graph. These are lost during content-hash-based reuse since
+     * they have no repository association, but they should be preserved across rescans.
      */
-    public DependencyGraph withInfrastructureNodes(DependencyGraph graph, List<GraphNode> infrastructure) {
+    public DependencyGraph withInfrastructureNodes(DependencyGraph graph, List<GraphNode> infrastructure,
+                                                    List<GraphEdge> infrastructureEdges) {
         if (infrastructure.isEmpty()) {
             return graph;
         }
@@ -279,7 +280,16 @@ public class GraphBuilder {
         for (GraphNode node : infrastructure) {
             nodes.putIfAbsent(node.key(), node);
         }
-        return new DependencyGraph(List.copyOf(nodes.values()), graph.edges());
+
+        Map<String, GraphEdge> edges = new LinkedHashMap<>();
+        for (GraphEdge edge : graph.edges()) {
+            edges.put(edge.id(), edge);
+        }
+        for (GraphEdge edge : infrastructureEdges) {
+            putEdge(edges, edge);
+        }
+
+        return new DependencyGraph(List.copyOf(nodes.values()), List.copyOf(edges.values()));
     }
 
     /**
