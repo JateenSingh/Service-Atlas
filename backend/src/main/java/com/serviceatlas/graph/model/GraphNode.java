@@ -22,6 +22,7 @@ public record GraphNode(
         String sbtVersion,
         String repoPath,
         String parentKey,
+        String description,
         List<Endpoint> endpoints,
         List<String> warnings,
         Map<String, Object> metadata) {
@@ -48,13 +49,13 @@ public record GraphNode(
         }
         return new GraphNode(
                 key, displayName, type, framework, scalaVersion, sbtVersion, repoPath, parentKey,
-                endpoints, merged, metadata);
+                description, endpoints, merged, metadata);
     }
 
     public GraphNode withEndpoints(List<Endpoint> newEndpoints) {
         return new GraphNode(
                 key, displayName, type, framework, scalaVersion, sbtVersion, repoPath, parentKey,
-                newEndpoints, warnings, metadata);
+                description, newEndpoints, warnings, metadata);
     }
 
     public static final class Builder {
@@ -66,6 +67,7 @@ public record GraphNode(
         private String sbtVersion;
         private String repoPath;
         private String parentKey;
+        private String description;
         private List<Endpoint> endpoints = List.of();
         private List<String> warnings = List.of();
         private final Map<String, Object> metadata = new LinkedHashMap<>();
@@ -101,6 +103,11 @@ public record GraphNode(
             return this;
         }
 
+        public Builder description(String description) {
+            this.description = description;
+            return this;
+        }
+
         public Builder endpoints(List<Endpoint> endpoints) {
             this.endpoints = endpoints;
             return this;
@@ -121,7 +128,7 @@ public record GraphNode(
         public GraphNode build() {
             return new GraphNode(
                     key, displayName, type, framework, scalaVersion, sbtVersion, repoPath, parentKey,
-                    endpoints, warnings, metadata);
+                    description, endpoints, warnings, metadata);
         }
     }
 }

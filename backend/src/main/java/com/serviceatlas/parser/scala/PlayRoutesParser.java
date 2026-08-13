@@ -27,6 +27,9 @@ public final class PlayRoutesParser {
     /** {@code ->  /admin  admin.Routes} — Play's sub-router include. */
     private static final Pattern INCLUDE = Pattern.compile("^\\s*->\\s+(\\S+)\\s+(\\S+)\\s*$");
 
+    /** Marks an endpoint as deprecated: {@code # @deprecated as of ...} or {@code # Deprecated ...} */
+    private static final Pattern DEPRECATION = Pattern.compile("^\\s*#.*[Dd]eprecated", Pattern.CASE_INSENSITIVE);
+
     private static final int MAX_ENDPOINTS = 500;
 
     private final RepoFiles files;
@@ -53,27 +56,39 @@ public final class PlayRoutesParser {
 
         for (String routeFile : routeFiles) {
             files.readSource(routeFile).ifPresent(source -> {
+                boolean nextIsDeprecated = false;
                 for (String raw : source.rawLines()) {
                     String line = raw.strip();
-                    if (line.isEmpty() || line.startsWith("#")) {
+                    if (line.isEmpty()) {
+                        continue;
+                    }
+                    if (line.startsWith("#")) {
+                        if (DEPRECATION.matcher(line).matches()) {
+                            nextIsDeprecated = true;
+                        }
                         continue;
                     }
                     Matcher include = INCLUDE.matcher(line);
                     if (include.matches()) {
+                        nextIsDeprecated = false;
                         continue; // the included router's own file is parsed separately
                     }
                     Matcher matcher = ROUTE.matcher(line);
                     if (!matcher.matches()) {
+                        nextIsDeprecated = false;
                         continue;
                     }
                     String method = matcher.group(1);
                     if (!HTTP_METHODS.contains(method)) {
+                        nextIsDeprecated = false;
                         continue;
                     }
-                    Endpoint endpoint = new Endpoint(method, matcher.group(2), matcher.group(3));
+                    Boolean deprecated = nextIsDeprecated ? true : null;
+                    Endpoint endpoint = new Endpoint(method, matcher.group(2), matcher.group(3), deprecated);
                     if (seen.add(endpoint.signature()) && endpoints.size() < MAX_ENDPOINTS) {
                         endpoints.add(endpoint);
                     }
+                    nextIsDeprecated = false;
                 }
             });
         }

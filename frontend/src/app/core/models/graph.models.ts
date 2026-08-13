@@ -37,6 +37,7 @@ export interface Endpoint {
   method: string;
   path: string;
   handler?: string;
+  deprecated?: boolean;
 }
 
 export interface Evidence {
@@ -56,6 +57,7 @@ export interface GraphNode {
   sbtVersion?: string;
   repoPath?: string;
   parentKey?: string;
+  description?: string;
   endpoints: Endpoint[];
   warnings: string[];
   metadata: Record<string, unknown>;

@@ -147,6 +147,7 @@ public final class OverlayMerger {
                 node.sbtVersion(),
                 node.repoPath(),
                 node.parentKey(),
+                node.description(),
                 node.endpoints(),
                 node.warnings(),
                 metadata);

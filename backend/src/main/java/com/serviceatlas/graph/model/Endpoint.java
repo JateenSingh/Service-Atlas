@@ -9,11 +9,20 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * @param method HTTP verb as written in the routes file
  * @param path   route path, including Play's {@code :param} and {@code *wildcard} segments
  * @param handler the controller method the route points at
+ * @param deprecated whether this endpoint is marked as deprecated
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record Endpoint(String method, String path, String handler) {
+public record Endpoint(String method, String path, String handler, Boolean deprecated) {
+
+    public Endpoint(String method, String path, String handler) {
+        this(method, path, handler, null);
+    }
 
     public String signature() {
         return method + " " + path;
+    }
+
+    public boolean isDeprecated() {
+        return deprecated != null && deprecated;
     }
 }

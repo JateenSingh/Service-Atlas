@@ -3,6 +3,8 @@
 GET     /orders                      controllers.OrderController.list(page: Int ?= 1)
 GET     /orders/:id                  controllers.OrderController.get(id: String)
 POST    /orders                      controllers.OrderController.create()
+# @deprecated Use PUT /orders/:id/status instead
+PUT     /orders/:id/state            controllers.OrderController.updateState(id: String)
 PUT     /orders/:id/status           controllers.OrderController.updateStatus(id: String)
 DELETE  /orders/:id                  controllers.OrderController.cancel(id: String)
 GET     /health                      controllers.HealthController.check()

@@ -9,6 +9,12 @@
   </header>
 
   <div class="panel-body scroll">
+    @if (selected.description) {
+      <section class="description">
+        <p>{{ selected.description }}</p>
+      </section>
+    }
+
     @if (selected.warnings.length > 0) {
       <section class="warnings">
         @for (warning of selected.warnings; track warning) {
@@ -104,9 +110,12 @@
         <h4>Exposed endpoints <span class="count">{{ selected.endpoints.length }}</span></h4>
         <ul class="endpoints">
           @for (endpoint of selected.endpoints; track endpoint.method + endpoint.path) {
-            <li>
+            <li [class.deprecated]="endpoint.deprecated">
               <span class="method" [attr.data-method]="endpoint.method">{{ endpoint.method }}</span>
               <span class="mono path">{{ endpoint.path }}</span>
+              @if (endpoint.deprecated) {
+                <span class="deprecation-badge">Deprecated</span>
+              }
             </li>
           }
         </ul>

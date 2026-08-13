@@ -84,7 +84,9 @@ public class ScalaSbtLanguageParser implements LanguageParser {
                                        String nodeKey, String serviceName, List<String> aliases) {
         Set<String> frameworks = FrameworkDetector.detectAll(build.dependencies(), files);
         List<Endpoint> endpoints = new PlayRoutesParser(files).parse();
+        String description = extractDescription(files);
         GraphNode.Builder node = GraphNode.builder(nodeKey, serviceName, NodeType.SERVICE)
+                .description(description)
                 .endpoints(endpoints)
                 // Stored so an incremental re-scan can restore this repo's identity without
                 // re-parsing it (FR-7.3): other repos' references still have to resolve here.
@@ -165,5 +167,48 @@ public class ScalaSbtLanguageParser implements LanguageParser {
             cause = cause.getCause();
         }
         return cause.getClass().getSimpleName() + ": " + cause.getMessage();
+    }
+
+    /** Extracts service description from build.sbt or README.md. */
+    private String extractDescription(RepoFiles files) {
+        // Try to read description from a comment at the top of build.sbt
+        String buildDescription = files.readSource("build.sbt")
+                .map(source -> {
+                    for (String line : source.rawLines()) {
+                        String trimmed = line.strip();
+                        if (trimmed.startsWith("//") && trimmed.length() > 2) {
+                            String comment = trimmed.substring(2).strip();
+                            // Skip lines that are likely to be license or code comments
+                            if (!comment.isEmpty() && !comment.contains("@") && !comment.contains("http")) {
+                                return comment;
+                            }
+                        }
+                        if (!trimmed.startsWith("//") && !trimmed.isEmpty()) {
+                            // Stop at first non-comment line
+                            break;
+                        }
+                    }
+                    return null;
+                })
+                .orElse(null);
+        if (buildDescription != null && !buildDescription.isEmpty()) {
+            return buildDescription;
+        }
+        // Fallback: try to read first line from README.md
+        return files.readSource("README.md")
+                .map(source -> {
+                    for (String line : source.rawLines()) {
+                        String trimmed = line.strip();
+                        if (!trimmed.isEmpty() && !trimmed.startsWith("#")) {
+                            return trimmed;
+                        }
+                        // Extract from heading if it exists
+                        if (trimmed.startsWith("# ")) {
+                            return trimmed.substring(2).strip();
+                        }
+                    }
+                    return null;
+                })
+                .orElse(null);
     }
 }

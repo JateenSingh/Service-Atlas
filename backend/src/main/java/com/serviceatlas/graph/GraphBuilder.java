@@ -145,8 +145,8 @@ public class GraphBuilder {
     private static GraphNode withMetadata(GraphNode node, Map<String, Object> metadata) {
         return new GraphNode(
                 node.key(), node.displayName(), node.type(), node.framework(), node.scalaVersion(),
-                node.sbtVersion(), node.repoPath(), node.parentKey(), node.endpoints(), node.warnings(),
-                metadata);
+                node.sbtVersion(), node.repoPath(), node.parentKey(), node.description(),
+                node.endpoints(), node.warnings(), metadata);
     }
 
     /** FR-3.6 — producer → topic → consumer, with the topic as its own node. */
