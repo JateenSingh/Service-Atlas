@@ -175,6 +175,80 @@
   );
 }
 
+/* ---------------------------------------------------------------- hidden items */
+
+.hidden-items {
+  grid-area: filters;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-raised);
+}
+
+.hidden-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.hidden-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.hidden-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hidden-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+  font-size: var(--text-sm);
+}
+
+.hidden-item-label {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  word-break: break-word;
+}
+
+.hidden-item-label:hover {
+  color: var(--text-primary);
+}
+
+.hidden-item-label[data-type='EXTERNAL'],
+.hidden-item-label[data-type='TOPIC'] {
+  font-style: italic;
+}
+
+.btn-sm {
+  padding: var(--space-1) var(--space-2);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
 /* ---------------------------------------------------------------- sidebar */
 
 .sidebar {

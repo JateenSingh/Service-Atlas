@@ -113,6 +113,20 @@ export class GraphStore {
     () => this.graphSignal().edges.length - this.visibleGraph().edges.length,
   );
 
+  /** Nodes that are hidden but can be reshown (FR-4.4). */
+  readonly hiddenNodes = computed(() => {
+    const all = new Set(this.graphSignal().nodes.map((n) => n.key));
+    const visible = new Set(this.visibleGraph().nodes.map((n) => n.key));
+    return this.graphSignal().nodes.filter((node) => all.has(node.key) && !visible.has(node.key));
+  });
+
+  /** Edges that are hidden but can be reshown (FR-4.4). */
+  readonly hiddenEdges = computed(() => {
+    const all = new Set(this.graphSignal().edges.map((e) => e.id));
+    const visible = new Set(this.visibleGraph().edges.map((e) => e.id));
+    return this.graphSignal().edges.filter((edge) => all.has(edge.id) && !visible.has(edge.id));
+  });
+
   readonly selectedNode = computed<GraphNode | null>(() => {
     const selection = this.selectionSignal();
     if (selection.kind !== 'node') {
