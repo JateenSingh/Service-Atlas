@@ -197,6 +197,7 @@ public class ScanService {
 
         DependencyGraph graph = graphBuilder.build(parsed);
         graph = graphBuilder.withReusedEdges(graph, reusedEdges);
+        graph = graphBuilder.withInfrastructureNodes(graph, previous.infrastructureNodes());
         graph = graphBuilder.withEndpointLabels(graph);
         graphStore.save(scanId, graph);
 
@@ -412,15 +413,17 @@ public class ScanService {
      * actually produced something for it. Reuse carries over both the nodes (so other repositories'
      * references still resolve to them, via the aliases stored in node metadata) and the edges those
      * nodes were the source of — already resolved, since re-resolving them would need signals we
-     * deliberately did not recompute.
+     * deliberately did not recompute. Infrastructure nodes (datastores, topics, external services)
+     * are preserved separately and added back to the graph.
      */
     private record PreviousScan(
             Map<String, String> hashesByRepoPath,
             Map<String, List<GraphNode>> nodesByRepoPath,
-            Map<String, List<GraphEdge>> edgesByRepoPath) {
+            Map<String, List<GraphEdge>> edgesByRepoPath,
+            List<GraphNode> infrastructureNodes) {
 
         static PreviousScan none() {
-            return new PreviousScan(Map.of(), Map.of(), Map.of());
+            return new PreviousScan(Map.of(), Map.of(), Map.of(), List.of());
         }
 
         Optional<RepoOutcome> reuse(RepoCandidate candidate, String fingerprint) {
@@ -480,10 +483,12 @@ public class ScanService {
         DependencyGraph graph = graphStore.load(previousScanId);
         Map<String, List<GraphNode>> nodesByRepo = new java.util.HashMap<>();
         Map<String, String> repoPathByNodeKey = new java.util.HashMap<>();
+        List<GraphNode> infrastructureNodes = new ArrayList<>();
         for (GraphNode node : graph.nodes()) {
             String repoPath = owningRepoPath(node, hashes.keySet());
             if (repoPath == null) {
-                continue; // topics and external nodes belong to no repository
+                infrastructureNodes.add(node);
+                continue;
             }
             nodesByRepo.computeIfAbsent(repoPath, key -> new ArrayList<>()).add(node);
             repoPathByNodeKey.put(node.key(), repoPath);
@@ -496,7 +501,7 @@ public class ScanService {
                 edgesByRepo.computeIfAbsent(repoPath, key -> new ArrayList<>()).add(edge);
             }
         }
-        return new PreviousScan(hashes, nodesByRepo, edgesByRepo);
+        return new PreviousScan(hashes, nodesByRepo, edgesByRepo, infrastructureNodes);
     }
 
     /** A node belongs to the repository whose path prefixes its own (services and their modules). */

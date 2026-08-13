@@ -264,6 +264,25 @@ public class GraphBuilder {
     }
 
     /**
+     * Adds infrastructure nodes (datastores, topics, external services) from previous scans back
+     * into the graph. These nodes are lost during content-hash-based reuse since they have no
+     * repository association, but they should be preserved across rescans.
+     */
+    public DependencyGraph withInfrastructureNodes(DependencyGraph graph, List<GraphNode> infrastructure) {
+        if (infrastructure.isEmpty()) {
+            return graph;
+        }
+        Map<String, GraphNode> nodes = new LinkedHashMap<>();
+        for (GraphNode node : graph.nodes()) {
+            nodes.putIfAbsent(node.key(), node);
+        }
+        for (GraphNode node : infrastructure) {
+            nodes.putIfAbsent(node.key(), node);
+        }
+        return new DependencyGraph(List.copyOf(nodes.values()), graph.edges());
+    }
+
+    /**
      * Attaches route catalogues to their nodes (FR-3.4) and labels HTTP edges whose path matches one
      * of the callee's routes — the labelling use the spec calls for.
      */
