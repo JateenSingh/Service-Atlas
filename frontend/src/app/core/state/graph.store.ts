@@ -207,6 +207,7 @@ export class GraphStore {
     this.conflictsSignal.set(response.conflicts ?? []);
     this.hiddenNodeKeysSignal.set(new Set(response.hiddenNodes ?? []));
     this.hiddenEdgeIdsSignal.set(new Set(response.hiddenEdges ?? []));
+    console.debug('GraphStore.accept: hidden nodes =', response.hiddenNodes?.length ?? 0, 'hidden edges =', response.hiddenEdges?.length ?? 0);
   }
 
   /**
