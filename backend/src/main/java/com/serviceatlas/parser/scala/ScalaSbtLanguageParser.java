@@ -63,7 +63,6 @@ public class ScalaSbtLanguageParser implements LanguageParser {
 
         List<GraphNode> nodes = new ArrayList<>();
         nodes.add(serviceNode);
-        nodes.addAll(subModuleNodes(build, nodeKey, candidate, files));
 
         List<DependencySignal> signals = new ArrayList<>();
         List<String> warnings = new ArrayList<>(build.warnings());
@@ -84,6 +83,12 @@ public class ScalaSbtLanguageParser implements LanguageParser {
                                        String nodeKey, String serviceName, List<String> aliases) {
         Set<String> frameworks = FrameworkDetector.detectAll(build.dependencies(), files);
         List<Endpoint> endpoints = new PlayRoutesParser(files).parse();
+        // For multi-module projects, also extract endpoints from deployable sub-modules
+        for (SbtModule module : build.modules()) {
+            if (module.deployable()) {
+                endpoints.addAll(moduleEndpoints(files, module));
+            }
+        }
         String description = extractDescription(files);
         GraphNode.Builder node = GraphNode.builder(nodeKey, serviceName, NodeType.SERVICE)
                 .description(description)
